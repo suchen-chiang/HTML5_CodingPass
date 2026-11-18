@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>P1606 路平專案 — 雙指標滑動視窗 [p, q) 語音互動教學動畫</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', 'Noto Sans TC', sans-serif;
+      background-color: #f1f5f9;
+      color: #0f172a;
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+    }
+    input, textarea, select {
+      user-select: text;
+      -webkit-user-select: text;
+      -moz-user-select: text;
+      -ms-user-select: text;
+    }
+    .no-copy-zone {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+      -moz-user-select: none !important;
+      -ms-user-select: none !important;
+    }
+    .font-mono-code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .mem-cell {
+      transition: all 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    @keyframes scanFlash {
+      0% { transform: scale(1.16); background-color: #fef08a; border-color: #eab308; box-shadow: 0 0 18px rgba(234, 179, 8, 0.55); }
+      100% { transform: scale(1); }
+    }
+    @keyframes overflowFlash {
+      0% { transform: scale(1.22) rotate(-3deg); background-color: #fecaca; border-color: #dc2626; box-shadow: 0 0 22px rgba(220, 38, 38, 0.7); }
+      50% { transform: scale(1.12) rotate(2deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+    @keyframes releaseFlash {
+      0% { transform: scale(1.16); background-color: #a7f3d0; border-color: #059669; box-shadow: 0 0 18px rgba(5, 150, 105, 0.55); }
+      100% { transform: scale(1); }
+    }
+    @keyframes maxPop {
+      0% { transform: scale(1.12); }
+      50% { transform: scale(0.97); }
+      100% { transform: scale(1); }
+    }
+    .anim-scan     { animation: scanFlash 0.6s ease-out; }
+    .anim-overflow { animation: overflowFlash 0.8s ease-out; }
+    .anim-release  { animation: releaseFlash 0.65s ease-out; }
+    .anim-max      { animation: maxPop 0.45s ease-out; }
+
+    /* 語音音波跳動動畫 */
+    @keyframes soundWave {
+      0%, 100% { height: 5px; }
+      50% { height: 17px; }
+    }
+    .wave-bar { animation: soundWave 0.7s ease-in-out infinite; }
+    .wave-bar:nth-child(2) { animation-delay: 0.15s; }
+    .wave-bar:nth-child(3) { animation-delay: 0.3s; }
+    .wave-bar:nth-child(4) { animation-delay: 0.45s; }
+
+    ::-webkit-scrollbar { height: 8px; width: 8px; }
+    ::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 9999px; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- 頂部簡報與語音控制列 -->
+  <header class="bg-slate-900 text-white shadow-lg border-b border-slate-800 sticky top-0 z-30">
+    <div class="max-w-[1520px] mx-auto px-4 py-3 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-600 to-indigo-600 flex items-center justify-center font-mono-code font-black text-base shadow-inner border border-white/20">
+          [p,q)
+        </div>
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="px-2.5 py-0.5 text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 rounded-full">第 16 章 雙指標演算法 • 易懂單層迴圈版</span>
+            <h1 class="text-lg sm:text-xl font-black tracking-tight">P1606 路平專案 — 起點旗子 <code class="text-emerald-300">p</code> 與探路工程師 <code class="text-amber-300">q</code></h1>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">追蹤 <code class="text-sky-300">maxSubseqLen_Easy()</code> • 修補券超支（<code class="text-rose-300">count &gt; k</code>）自動右移回收機制</p>
+        </div>
+      </div>
+
+      <!-- 播放與語音控制群 -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button onclick="resetCurrent()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/70 hover:text-rose-200 hover:border-rose-700 text-xs sm:text-sm font-bold border border-slate-700 transition">
+          ⏮ 重置
+        </button>
+
+        <button id="btn-prev" onclick="prevStep()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-xs sm:text-sm font-bold border border-slate-700 flex items-center gap-1 transition">
+          <span>◀</span> 上一步
+        </button>
+
+        <button id="btn-next" onclick="nextStep()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-xs sm:text-sm font-bold border border-slate-700 flex items-center gap-1 transition">
+          下一步 <span>▶</span>
+        </button>
+
+        <button id="btn-auto" onclick="toggleAutoPlay()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow flex items-center gap-1.5 transition min-w-[144px] justify-center">
+          <span id="auto-icon">🔊</span> <span id="auto-text">自動連續播放</span>
+        </button>
+
+        <button id="btn-replay" onclick="replayVoice()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-amber-950/80 hover:text-amber-200 hover:border-amber-600 text-xs sm:text-sm font-bold border border-slate-700 flex items-center gap-1.5 transition" title="重新朗讀本步驟語音">
+          <span>🔁</span> 重播本步語音
+        </button>
+
+        <!-- 語音開關與語速 -->
+        <div class="flex items-center bg-slate-800 rounded-xl p-1 border border-slate-700 gap-1">
+          <button id="btn-voice-toggle" onclick="toggleVoiceMute()" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white flex items-center gap-1 transition">
+            <span id="voice-icon">🎙️</span> <span id="voice-label">開啟</span>
+          </button>
+          <div class="h-4 w-[1px] bg-slate-700 mx-0.5"></div>
+          <button onclick="setVoiceRate(0.8)" id="rate-08" class="rate-btn px-2 py-1 text-xs rounded-lg text-slate-300 hover:bg-slate-700 font-mono-code">0.8x</button>
+          <button onclick="setVoiceRate(1.0)" id="rate-10" class="rate-btn px-2 py-1 text-xs rounded-lg bg-amber-500 text-slate-950 font-bold font-mono-code">1.0x</button>
+          <button onclick="setVoiceRate(1.2)" id="rate-12" class="rate-btn px-2 py-1 text-xs rounded-lg text-slate-300 hover:bg-slate-700 font-mono-code">1.2x</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 測資預設、視角切換與自訂輸入列 -->
+    <div class="bg-slate-800/95 border-t border-slate-700/80">
+      <div class="max-w-[1520px] mx-auto px-4 py-2.5 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2.5">
+        <!-- 左側：課堂範例與檢視模式切換 -->
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-xs font-bold text-slate-400">範例測資：</span>
+          <button onclick="selectPreset('sample2')" id="preset-sample2" class="preset-btn px-3 py-1.5 rounded-xl text-xs sm:text-sm font-mono-code font-extrabold bg-white text-slate-900 shadow transition">
+            範例二（推薦）：k=1, "11011011"
+          </button>
+          <button onclick="selectPreset('sample1')" id="preset-sample1" class="preset-btn px-3 py-1.5 rounded-xl text-xs sm:text-sm font-mono-code font-extrabold text-slate-200 bg-slate-700/70 hover:bg-slate-700 border border-slate-600 transition">
+            範例一：k=2, "0110"
+          </button>
+
+          <div class="h-5 w-[1px] bg-slate-700 mx-1 hidden sm:block"></div>
+
+          <span class="text-xs font-bold text-slate-400">追蹤趟次：</span>
+          <div class="inline-flex rounded-xl bg-slate-900 p-1 border border-slate-700 flex-wrap">
+            <button onclick="selectPassMode('zero')" id="pass-zero" class="pass-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-600 text-white transition">第一趟：填平 '0'</button>
+            <button onclick="selectPassMode('one')" id="pass-one" class="pass-btn px-2.5 py-1 rounded-lg text-xs font-bold text-slate-300 hover:bg-slate-800 transition">第二趟：修平 '1'</button>
+            <button onclick="selectPassMode('both')" id="pass-both" class="pass-btn px-2.5 py-1 rounded-lg text-xs font-bold text-slate-300 hover:bg-slate-800 transition">雙趟完整比較</button>
+          </div>
+        </div>
+
+        <!-- 右側：自訂測資模擬器 -->
+        <div class="flex flex-wrap items-center gap-2 bg-slate-900/90 border border-slate-700 rounded-xl px-3 py-1.5">
+          <span class="text-xs text-slate-400 font-bold">自訂道路：</span>
+          <label class="flex items-center gap-1 text-xs text-slate-300 font-mono-code">
+            <span>k=</span>
+            <input id="in-k" type="number" min="0" max="16" value="1" class="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-amber-300 font-bold w-14 focus:outline-none focus:border-amber-400" />
+          </label>
+          <label class="flex items-center gap-1 text-xs text-slate-300 font-mono-code">
+            <span>line=</span>
+            <input id="in-line" type="text" maxlength="16" value="11011011" placeholder="輸入0/1字串" class="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-emerald-300 font-bold w-32 focus:outline-none focus:border-emerald-400" />
+          </label>
+          <button onclick="applyCustomRoad()" class="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-xs">
+            套用自訂道路
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 雙趟進度與語音狀態條 -->
+  <div class="bg-slate-200/90 border-b border-slate-300">
+    <div class="max-w-[1520px] mx-auto px-4 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span id="pass-pill-1" class="px-2.5 py-0.5 rounded-full font-extrabold bg-sky-600 text-white shadow-2xs transition">
+          第一趟：len1 = maxSubseqLen_Easy(line, '0', k)（填平凹洞 '0' ➔ '1'）
+        </span>
+        <span class="text-slate-400 font-black">➔</span>
+        <span id="pass-pill-2" class="px-2.5 py-0.5 rounded-full font-bold bg-slate-300 text-slate-600 transition">
+          第二趟：len2 = maxSubseqLen_Easy(line, '1', k)（修平凸起 '1' ➔ '0'）
+        </span>
+        <div id="speaking-indicator" class="hidden items-center gap-1.5 text-emerald-700 font-extrabold bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300 ml-1">
+          <div class="flex items-end gap-0.5 h-3.5">
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+          </div>
+          <span>語音講解中...</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <span class="hidden md:inline text-slate-500">快捷鍵：<kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px]">←</kbd> <kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px]">→</kbd> 單步 / <kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px]">Space</kbd> 播放暫停</span>
+        <span>步驟進度：<strong id="step-counter" class="text-indigo-700 font-mono-code text-sm">1 / 1</strong></span>
+        <div class="w-28 sm:w-40 h-2 bg-slate-300 rounded-full overflow-hidden">
+          <div id="progress-bar" class="h-full bg-indigo-600 transition-all duration-200" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主工作區：左側記憶體與半開區間 [p, q) 舞台 + 右側完整 C++ 程式碼 -->
+  <main class="flex-1 max-w-[1520px] w-full mx-auto p-4 sm:p-5 grid grid-cols-1 xl:grid-cols-12 gap-5">
+
+    <!-- 左側 7 欄：視覺化舞台 -->
+    <div class="xl:col-span-7 flex flex-col gap-4">
+
+      <!-- 1. 當前步驟標題與語音解說看板 -->
+      <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 relative overflow-hidden">
+        <div id="card-accent" class="absolute left-0 top-0 bottom-0 w-2 bg-sky-600"></div>
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+          <div class="flex items-center gap-2.5">
+            <span id="step-badge" class="px-3 py-1 rounded-full text-xs font-extrabold bg-sky-100 text-sky-900">準備就緒</span>
+            <h2 id="step-title" class="text-lg sm:text-2xl font-black text-slate-900">載入中...</h2>
+          </div>
+          <span id="call-pill" class="px-3 py-1 rounded-xl bg-slate-900 text-amber-300 font-mono-code text-xs sm:text-sm font-bold">
+            maxSubseqLen_Easy(line, '0', 1)
+          </span>
+        </div>
+
+        <p id="step-desc" class="text-base sm:text-lg text-slate-700 leading-relaxed font-medium">
+          請點擊「下一步」或「自動連續播放」開始觀察起點旗子 p 與探路工程師 q 的運作。
+        </p>
+
+        <div class="mt-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-2.5">
+          <span class="text-lg leading-none mt-0.5">💡</span>
+          <div id="step-tip" class="text-xs sm:text-sm text-amber-950 font-semibold leading-snug">
+            教學提示
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 核心舞台：char line[100001] 記憶體陣列與修補券儀表板 -->
+      <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 flex-1 flex flex-col justify-between gap-4">
+        <div>
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h3 class="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2 flex-wrap">
+                <span>道路記憶體陣列 <code class="font-mono-code text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg">char line[]</code></span>
+                <span id="target-mark-badge" class="px-2.5 py-0.5 rounded-lg bg-sky-100 text-sky-800 font-mono-code text-xs font-extrabold">
+                  修整目標 mark = '0'（凹洞）
+                </span>
+              </h3>
+              <p class="text-xs text-slate-500 mt-0.5">半開區間 <code class="font-mono-code font-bold text-slate-700">[p, q)</code> 包含從 <code class="font-mono-code">p</code> 到 <code class="font-mono-code">q - 1</code> 的路段，長度直接等於指標位址相減 <code class="font-mono-code font-bold text-indigo-700">q - p</code></p>
+            </div>
+
+            <!-- 指標顏色圖例 -->
+            <div class="flex flex-wrap items-center gap-1.5 text-xs font-bold">
+              <span class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-mono-code">🚩 p (起點旗子)</span>
+              <span class="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono-code">👷 q (探路工程師)</span>
+              <span class="px-2.5 py-1 rounded-lg bg-indigo-100 text-indigo-900 border border-indigo-300 font-mono-code">[p, q) 合法路段</span>
+            </div>
+          </div>
+
+          <!-- 修補券狀態視覺橫幅 (Repair Vouchers) -->
+          <div id="voucher-bar" class="mb-3 rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 transition-all">
+            <div class="flex items-center gap-2.5">
+              <span class="text-xl">🎟️</span>
+              <div>
+                <div class="text-xs font-extrabold text-slate-700">修補券使用狀態（最多可用 <span id="voucher-k-text" class="font-mono-code text-indigo-700">k = 1</span> 張）</div>
+                <div id="voucher-status-msg" class="text-xs text-slate-500 font-semibold">目前券數在預算內，路段安全！</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div id="voucher-icons" class="flex items-center gap-1.5 flex-wrap">
+                <!-- 由 JS 動態渲染修補券圖示 -->
+              </div>
+              <span id="voucher-counter-pill" class="px-3 py-1 rounded-xl font-mono-code text-xs sm:text-sm font-black bg-slate-800 text-emerald-300">
+                count = 0 / 1
+              </span>
+            </div>
+          </div>
+
+          <!-- 記憶體陣列橫向捲動舞台 -->
+          <div class="overflow-x-auto pb-3">
+            <div id="road-grid" class="inline-flex gap-1.5 sm:gap-2 pt-16 pb-3 px-2 min-w-full justify-start sm:justify-center">
+              <!-- 由 JS 動態渲染每個道路格子與指標 -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. 指標算術公式與雙趟成績對照看板 -->
+        <div class="pt-3 border-t border-slate-100 grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
+          <!-- 左側 7 欄：指標相減公式即時計算 -->
+          <div class="lg:col-span-7 bg-slate-900 text-white rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-2 shadow-xs">
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-1 rounded-lg bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 font-mono-code text-xs font-bold">指標相減公式</span>
+              <span id="ptr-math-formula" class="font-mono-code text-xs sm:text-sm text-slate-200">
+                q (0x1000) - p (0x1000) = <strong class="text-amber-300 text-base">0</strong>
+              </span>
+            </div>
+            <div class="text-xs font-mono-code text-slate-400">
+              本趟最佳：<strong id="cur-lenmax-pill" class="text-emerald-400 text-base font-black">lenMax = 0</strong>
+            </div>
+          </div>
+
+          <!-- 右側 5 欄：len1 與 len2 雙趟結果彙整 -->
+          <div class="lg:col-span-5 grid grid-cols-3 gap-2 text-center font-mono-code">
+            <div id="card-len1" class="rounded-xl border-2 border-slate-200 bg-slate-50 p-2 transition-all">
+              <div class="text-[10px] text-slate-500 font-bold">len1 ('0'➔'1')</div>
+              <div id="val-len1" class="text-base sm:text-lg font-black text-slate-400">-</div>
+            </div>
+            <div id="card-len2" class="rounded-xl border-2 border-slate-200 bg-slate-50 p-2 transition-all">
+              <div class="text-[10px] text-slate-500 font-bold">len2 ('1'➔'0')</div>
+              <div id="val-len2" class="text-base sm:text-lg font-black text-slate-400">-</div>
+            </div>
+            <div id="card-ans" class="rounded-xl border-2 border-slate-200 bg-slate-900 text-white p-2 transition-all">
+              <div class="text-[10px] text-amber-300 font-bold">max(len1,len2)</div>
+              <div id="val-ans" class="text-base sm:text-lg font-black text-slate-500">-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. 即時變數監控面板 (Watch Window) -->
+      <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4">
+        <h3 class="font-bold text-slate-800 text-xs sm:text-sm mb-2 flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+          指標位址與局部變數即時監控器（Watch Window）
+        </h3>
+        <div id="watch-grid" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 font-mono-code text-xs">
+          <!-- 由 JS 動態填入 -->
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 右側 5 欄：完整 roadFlatten.cpp 原始碼同步高亮視窗（鎖定防選取複製） -->
+    <!-- 右側 5 欄：完整易懂版 C++ 原始碼同步高亮視窗（鎖定防選取複製） -->
+    <div id="code-window-wrapper" class="no-copy-zone xl:col-span-5 bg-slate-900 text-slate-100 rounded-3xl shadow-lg border border-slate-800 flex flex-col overflow-hidden">
+      <div class="px-4 py-3 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <div class="flex gap-1.5">
+            <span class="w-3 h-3 rounded-full bg-rose-500"></span>
+            <span class="w-3 h-3 rounded-full bg-amber-400"></span>
+            <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+          </div>
+          <span class="font-mono-code text-xs sm:text-sm font-bold text-slate-300 ml-2">maxSubseqLen_Easy.cpp 執行追蹤</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="px-2 py-0.5 rounded-md bg-rose-950/80 border border-rose-700/60 text-rose-300 text-[11px] font-bold">🔒 唯讀展示（禁止選取複製）</span>
+        </div>
+      </div>
+
+      <div id="code-panel" class="no-copy-zone p-3 sm:p-4 overflow-y-auto font-mono-code text-xs sm:text-[13px] leading-6 flex-1 select-none">
+        <!-- 程式碼由 JS 動態渲染 -->
+      </div>
+
+      <!-- 底部演算法核心三步驟口訣 -->
+      <div class="p-3.5 bg-slate-950/90 border-t border-slate-800 text-xs text-slate-300 space-y-1.5">
+        <div class="font-bold text-emerald-300 text-xs sm:text-sm">📌 maxSubseqLen_Easy() 單層迴圈三步心法：</div>
+        <div class="p-2 rounded-xl bg-slate-900 border border-slate-800">
+          <span class="text-amber-400 font-bold">① 工程師 q 前進：</span><code class="text-amber-300">if (*q == mark) count++; q++;</code> 踩到需修整的格子就花 1 張券，接著右移一格。
+        </div>
+        <div class="p-2 rounded-xl bg-slate-900 border border-slate-800">
+          <span class="text-rose-400 font-bold">② 超支回收券：</span><code class="text-rose-300">while (count &gt; k)</code> 若券超支，起點旗子 <code class="text-emerald-300">p</code> 就右縮直到跨過一個 <code class="text-rose-300">mark</code>（<code class="text-emerald-300">count--</code>）。
+        </div>
+        <div class="p-2 rounded-xl bg-slate-900 border border-slate-800">
+          <span class="text-sky-400 font-bold">③ 結算指標差：</span>合法視窗 <code class="text-sky-300">[p, q)</code> 的長度直接等於記憶體位址相減 <code class="text-sky-300">q - p</code>！
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 防複製溫和提示氣泡 -->
+  <div id="copy-lock-toast" class="fixed bottom-5 right-5 z-50 pointer-events-none opacity-0 translate-y-2 transition-all duration-200 bg-slate-900/95 text-amber-300 border border-amber-500/40 px-4 py-2.5 rounded-2xl shadow-xl text-xs sm:text-sm font-bold flex items-center gap-2">
+    <span>🔒</span>
+    <span>教學展示模式：程式碼已鎖定無法選取複製</span>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. 易懂版 C++ 程式碼定義（與教師指定之 maxSubseqLen_Easy 完全一致）
+    // =========================================================================
+    const CPP_LINES = [
+      { ln: 1,  code: '#include <iostream>' },
+      { ln: 2,  code: 'using namespace std;' },
+      { ln: 3,  code: '' },
+      { ln: 4,  code: '#define max(a, b) ((a) > (b) ? (a) : (b))' },
+      { ln: 5,  code: '' },
+      { ln: 6,  code: 'char line[100001];' },
+      { ln: 7,  code: '' },
+      { ln: 8,  code: 'int maxSubseqLen_Easy(char* text, char mark, int k) {' },
+      { ln: 9,  code: '    int lenMax = 0, count = 0;' },
+      { ln: 10, code: '    char *p = text; // 左指標（起點旗子）' },
+      { ln: 11, code: '    char *q = text; // 右指標（探路工程師）' },
+      { ln: 12, code: '' },
+      { ln: 13, code: '    while (*q != \'\\0\') {' },
+      { ln: 14, code: '        // 1. 右指標 q 往前走一步，若踩到 mark 就花掉 1 張修補券' },
+      { ln: 15, code: '        if (*q == mark) {' },
+      { ln: 16, code: '            count++;' },
+      { ln: 17, code: '        }' },
+      { ln: 18, code: '        q++;' },
+      { ln: 19, code: '' },
+      { ln: 20, code: '        // 2. 若手上的修補券超支 (count > k)，左指標 p 就往右縮，直到吐出一張券' },
+      { ln: 21, code: '        while (count > k) {' },
+      { ln: 22, code: '            if (*p == mark) {' },
+      { ln: 23, code: '                count--;' },
+      { ln: 24, code: '            }' },
+      { ln: 25, code: '            p++;' },
+      { ln: 26, code: '        }' },
+      { ln: 27, code: '' },
+      { ln: 28, code: '        // 3. 結算目前合法路段長度 (q - p)' },
+      { ln: 29, code: '        if (q - p > lenMax) {' },
+      { ln: 30, code: '            lenMax = q - p;' },
+      { ln: 31, code: '        }' },
+      { ln: 32, code: '    }' },
+      { ln: 33, code: '    return lenMax;' },
+      { ln: 34, code: '}' },
+      { ln: 35, code: '' },
+      { ln: 36, code: 'int main() {' },
+      { ln: 37, code: '    int n, k;' },
+      { ln: 38, code: '    while (cin >> n >> k >> line) {' },
+      { ln: 39, code: '        int len1 = maxSubseqLen_Easy(line, \'0\', k); // 嘗試將 \'0\' 填高成 \'1\'' },
+      { ln: 40, code: '        int len2 = maxSubseqLen_Easy(line, \'1\', k); // 嘗試將 \'1\' 修平成 \'0\'' },
+      { ln: 41, code: '        cout << max(len1, len2) << endl;' },
+      { ln: 42, code: '    }' },
+      { ln: 43, code: '    return 0;' },
+      { ln: 44, code: '}' }
+    ];
+
+    function renderCodePanel() {
+      const panel = document.getElementById('code-panel');
+      panel.innerHTML = CPP_LINES.map(item => {
+        const safe = item.code
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        return `
+          <div id="rf-ln-${item.ln}" class="flex items-start px-2 py-0.5 rounded-lg transition-colors duration-150">
+            <span class="w-7 shrink-0 text-slate-500 text-right pr-3 select-none">${item.ln}</span>
+            <pre class="whitespace-pre overflow-x-auto flex-1">${safe || ' '}</pre>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // =========================================================================
+    // 2. 精準單層迴圈執行追蹤器：模擬 maxSubseqLen_Easy(text, mark, k)
+    // =========================================================================
+    function traceSinglePass(roadStr, mark, k, passNum, prevLen1 = null) {
+      const steps = [];
+      const n = roadStr.length;
+      const chars = roadStr.split('');
+      chars.push('\0'); // 索引 n 為 '\0'
+
+      const markAction = mark === '0' ? "凹洞 '0' 填高成 '1'" : "凸起 '1' 修平成 '0'";
+      const passTitle = passNum === 1 ? "第一趟 (mark = '0')" : "第二趟 (mark = '1')";
+
+      let lenMax = 0;
+      let count = 0;
+      let p = 0;
+      let q = 0;
+
+      const pushStep = (cfg) => {
+        steps.push({
+          passNum,
+          mark,
+          k,
+          roadStr,
+          chars: chars.slice(),
+          p,
+          q,
+          starP: p <= n ? chars[p] : '\\0',
+          starQ: q <= n ? chars[q] : '\\0',
+          count,
+          lenMax,
+          len1Val: passNum === 1 ? (cfg.finished ? lenMax : null) : prevLen1,
+          len2Val: passNum === 2 ? (cfg.finished ? lenMax : null) : null,
+          finalAns: (passNum === 2 && cfg.finished && prevLen1 !== null) ? Math.max(prevLen1, lenMax) : null,
+          highlightIdx: cfg.highlightIdx !== undefined ? cfg.highlightIdx : null,
+          highlightType: cfg.highlightType || 'scan',
+          badge: cfg.badge,
+          title: cfg.title,
+          desc: cfg.desc,
+          voice: cfg.voice,
+          tip: cfg.tip,
+          accent: cfg.accent || (passNum === 1 ? 'sky' : 'purple'),
+          codeLines: cfg.codeLines || []
+        });
+      };
+
+      // 步驟 0：函式初始化
+      pushStep({
+        badge: `${passTitle} • 初始化設定`,
+        title: `呼叫 maxSubseqLen_Easy(line, '${mark}', ${k}) — 旗子 p 與工程師 q 就定位`,
+        desc: `本趟要將「${markAction}」，手上有 k = ${k} 張修補券。起點旗子 p 與探路工程師 q 同時站在起點 [0]（0x1000），目前路段 [p, q) 長度為 0。`,
+        voice: `${passNum === 1 ? '第一趟' : '第二趟'}，目標是把 ${mark} 修平，最多可使用 ${k} 張修補券。起點旗子 p 與探路工程師 q 都從起點第零格出發。`,
+        tip: `p 代表我們修補路段的「起點旗子」，q 代表正在往前探路的「工程師」，兩者之間 [p, q) 就是當前路段。`,
+        codeLines: [passNum === 1 ? 39 : 40, 8, 9, 10, 11]
+      });
+
+      // 主迴圈：while (*q != '\0')
+      while (q < n) {
+        const scannedIdx = q;
+        const ch = chars[q];
+        const isMark = (ch === mark);
+
+        // 步驟 1：q 探路前進
+        if (isMark) count++;
+        q++;
+        const isOverBudget = count > k;
+
+        pushStep({
+          highlightIdx: scannedIdx,
+          highlightType: isOverBudget ? 'overflow' : (isMark ? 'scan' : 'release'),
+          badge: isOverBudget
+            ? `${passTitle} • ⚠️ 修補券超支 (count > k)`
+            : `${passTitle} • 步驟 1：工程師 q 向前探路`,
+          title: isMark
+            ? `q 踩到 [${scannedIdx}] 的 '${ch}'！花掉 1 張修補券（count = ${count}/${k}），q 右移`
+            : `q 踩到 [${scannedIdx}] 的 '${ch}'（本來就平整，免用券），q 右移`,
+          desc: isMark
+            ? (isOverBudget
+                ? `工程師 q 在索引 [${scannedIdx}] 踩到需要修整的 '${ch}'，導致已用券數 count 變成 ${count}（超過上限 k = ${k}）！q 先前進到 [${q}]，接著必須請起點旗子 p 往右縮來回收 1 張券！`
+                : `工程師 q 檢查 [${scannedIdx}] 發現是 '${ch}'，消耗 1 張修補券（count = ${count}/${k}），並往右移動一格來到 [${q}]。`)
+            : `工程師 q 檢查 [${scannedIdx}] 發現是 '${ch}'，這格不需要修整，不花修補券，直接往右移動一格來到 [${q}]。`,
+          voice: isMark
+            ? (isOverBudget
+                ? `探路工程師 q 在索引 ${scannedIdx} 踩到 ${ch}，已用修補券變成 ${count} 張，超過上限 ${k} 張了！必須移動起點旗子 p 來回收一張券。`
+                : `探路工程師 q 踩到 ${ch}，花掉一張修補券，目前用了 ${count} 張，工程師繼續往右走一格。`)
+            : `探路工程師 q 踩到 ${ch}，路面原本就是平的，不用花修補券，直接往右走一格。`,
+          tip: isOverBudget
+            ? `超支警報！手頭只有 ${k} 張券卻用了 ${count} 張，下一刻將啟動 while (count > k) 迴圈回收券數！`
+            : `工程師 q 每次都會往前走一格（q++），只有踩到目標字元 '${mark}' 時才會讓 count 加 1。`,
+          accent: isOverBudget ? 'rose' : (isMark ? 'amber' : (passNum === 1 ? 'sky' : 'purple')),
+          codeLines: isMark ? [13, 15, 16, 18] : [13, 15, 18]
+        });
+
+        // 步驟 2：若 count > k，左指標 p 往右縮小視窗直到吐出一張券
+        while (count > k) {
+          const oldP = p;
+          const pChar = chars[p];
+          const pIsMark = (pChar === mark);
+          if (pIsMark) count--;
+          p++;
+
+          pushStep({
+            highlightIdx: oldP,
+            highlightType: pIsMark ? 'release' : 'scan',
+            badge: pIsMark
+              ? `${passTitle} • 步驟 2：✅ 成功回收 1 張修補券`
+              : `${passTitle} • 步驟 2：旗子 p 右移尋找舊券`,
+            title: pIsMark
+              ? `旗子 p 跨過 [${oldP}] 的 '${pChar}'！回收 1 張券（count 降為 ${count}/${k}）`
+              : `旗子 p 跨過 [${oldP}] 的 '${pChar}'（非目標字元，繼續右移）`,
+            desc: pIsMark
+              ? `起點旗子 p 放棄原本修補的索引 [${oldP}]（'${pChar}'），執行 count-- 回收 1 張修補券！現在 count = ${count} <= ${k}，預算恢復平衡，跳出內層迴圈！`
+              : `起點旗子 p 移出索引 [${oldP}]（'${pChar}'），這格本來就沒花修補券，所以 count 仍是 ${count}（依然超支），旗子 p 必須繼續往右移動！`,
+            voice: pIsMark
+              ? `起點旗子 p 跨過索引 ${oldP} 的 ${pChar}，成功回收一張修補券，目前剩餘用量 ${count} 張，恢復合法！`
+              : `起點旗子 p 跨過索引 ${oldP} 的 ${pChar}，這格沒用券，旗子還要繼續往右移動。`,
+            tip: pIsMark
+              ? `「放棄左邊一個舊坑，把券讓給右邊的新坑」，這就是滑動視窗最精妙的回收機制！`
+              : `起點旗子 p 只有跨過真正的 '${mark}' 時，才能把修補券收回來。`,
+            accent: pIsMark ? 'emerald' : 'amber',
+            codeLines: pIsMark ? [21, 22, 23, 25] : [21, 22, 25]
+          });
+        }
+
+        // 步驟 3：結算目前合法路段長度 (q - p)
+        const curLen = q - p;
+        const isNewMax = curLen > lenMax;
+        if (isNewMax) lenMax = curLen;
+
+        pushStep({
+          badge: isNewMax
+            ? `${passTitle} • 步驟 3：🏆 刷新最長平整紀錄！`
+            : `${passTitle} • 步驟 3：結算合法路段長度`,
+          title: isNewMax
+            ? `q - p = ${curLen} > lenMax，更新最長紀錄 lenMax = ${lenMax}！`
+            : `目前合法路段長度 q - p = ${curLen}（未超過目前最佳 ${lenMax}）`,
+          desc: `確認目前視窗 [${p}, ${q}) 內的修補券數量合法（count = ${count} <= ${k}）。用指標相減計算長度 q - p = ${curLen}，${isNewMax ? `打破紀錄，將 lenMax 更新為 ${lenMax}！` : `維持 lenMax = ${lenMax} 不變。`}`,
+          voice: isNewMax
+            ? `結算目前合法路段，q 減 p 等於 ${curLen}，刷新最長紀錄為 ${lenMax}！`
+            : `結算目前合法路段長度為 ${curLen}，最長紀錄維持 ${lenMax}。`,
+          tip: `因為是半開區間 [p, q)，指標位址相減 q - p 直接就是包含的格子總數！`,
+          accent: isNewMax ? 'emerald' : (passNum === 1 ? 'sky' : 'purple'),
+          codeLines: isNewMax ? [29, 30] : [29]
+        });
+      }
+
+      // 步驟 4：抵達 '\0' 結束並回傳 lenMax
+      pushStep({
+        finished: true,
+        highlightIdx: n,
+        highlightType: 'scan',
+        badge: `${passTitle} • 抵達終點 '\\0' 並回傳`,
+        title: `*q == '\\0' 迴圈結束，return lenMax = ${lenMax}`,
+        desc: passNum === 1
+          ? `探路工程師 q 抵達字串結尾 '\\0'（索引 [${n}]）！第一趟計算完成，若將凹洞 '0' 填高，最長連續平整路段長度 len1 = ${lenMax}。`
+          : `探路工程師 q 抵達字串結尾 '\\0'（索引 [${n}]）！第二趟計算完成，若將凸起 '1' 修平，最長連續平整路段長度 len2 = ${lenMax}。`,
+        voice: `工程師 q 走到字串結尾斜線零，${passNum === 1 ? '第一趟' : '第二趟'}結束，回傳最長平整長度 ${lenMax}。`,
+        tip: passNum === 1
+          ? `接下來 main() 會執行第二趟 maxSubseqLen_Easy(line, '1', k)，比較兩種修路方案誰更長！`
+          : `兩趟都計算完畢，最後用 max(len1, len2) 取最大值即可！`,
+        accent: 'emerald',
+        codeLines: [13, 33, passNum === 1 ? 39 : 40]
+      });
+
+      return { steps, resultLen: lenMax };
+    }
+
+    function buildFullAnimation(roadStr, k, passMode) {
+      let allSteps = [];
+      let len1 = null;
+      let len2 = null;
+
+      if (passMode === 'both' || passMode === 'zero') {
+        const p1 = traceSinglePass(roadStr, '0', k, 1, null);
+        allSteps = allSteps.concat(p1.steps);
+        len1 = p1.resultLen;
+      }
+
+      if (passMode === 'both' || passMode === 'one') {
+        const p2 = traceSinglePass(roadStr, '1', k, 2, len1);
+        allSteps = allSteps.concat(p2.steps);
+        len2 = p2.resultLen;
+      }
+
+      if (passMode === 'both') {
+        const finalAns = Math.max(len1, len2);
+        const chars = roadStr.split('');
+        chars.push('\0');
+        allSteps.push({
+          passNum: 3,
+          mark: '0',
+          k,
+          roadStr,
+          chars,
+          p: 0,
+          q: roadStr.length,
+          starP: chars[0],
+          starQ: '\\0',
+          count: k,
+          lenMax: finalAns,
+          len1Val: len1,
+          len2Val: len2,
+          finalAns,
+          finished: true,
+          badge: '最終結算 • main() 輸出答案',
+          title: `cout << max(${len1}, ${len2}) << endl; 最終答案 = ${finalAns}`,
+          desc: `比較兩種修路方式：填平 '0' 最長可得 ${len1}，修平 '1' 最長可得 ${len2}。兩者取最大值，本筆測資最終輸出 ${finalAns}！`,
+          voice: `回到主程式，比較第一趟的 ${len1} 與第二趟的 ${len2}，取較大值，最終輸出答案 ${finalAns}！`,
+          tip: `時間複雜度僅 O(n)：指標 p 與 q 各自從頭走到尾最多一次，即使長度 100,000 也能瞬間算完！`,
+          accent: 'emerald',
+          codeLines: [41]
+        });
+      }
+
+      return allSteps;
+    }
+
+    // =========================================================================
+    // 3. 語音合成引擎 (Web Speech API - zh-TW)
+    // =========================================================================
+    let voiceEnabled = true;
+    let voiceRate = 1.0;
+    let preferredVoice = null;
+    let isAutoPlaying = false;
+    let fallbackTimer = null;
+
+    function loadVoices() {
+      if (!('speechSynthesis' in window)) return;
+      const voices = window.speechSynthesis.getVoices();
+      preferredVoice =
+        voices.find(v => v.lang === 'zh-TW' && v.name.includes('Google')) ||
+        voices.find(v => v.lang === 'zh-TW' || v.lang === 'zh_TW') ||
+        voices.find(v => v.lang.startsWith('zh'));
+    }
+
+    if ('speechSynthesis' in window) {
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    function stopSpeech() {
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      setSpeakingUI(false);
+    }
+
+    function setSpeakingUI(speaking) {
+      const ind = document.getElementById('speaking-indicator');
+      if (speaking) {
+        ind.classList.remove('hidden');
+        ind.classList.add('flex');
+      } else {
+        ind.classList.add('hidden');
+        ind.classList.remove('flex');
+      }
+    }
+
+    function speakText(text, onFinishCallback) {
+      stopSpeech();
+
+      if (!voiceEnabled || !('speechSynthesis' in window)) {
+        if (onFinishCallback) {
+          fallbackTimer = setTimeout(onFinishCallback, 2400 / voiceRate);
+        }
+        return;
+      }
+
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'zh-TW';
+      if (preferredVoice) utter.voice = preferredVoice;
+      utter.rate = voiceRate;
+      utter.pitch = 1.0;
+
+      utter.onstart = () => setSpeakingUI(true);
+      utter.onend = () => {
+        setSpeakingUI(false);
+        if (onFinishCallback) {
+          fallbackTimer = setTimeout(onFinishCallback, 550);
+        }
+      };
+      utter.onerror = () => {
+        setSpeakingUI(false);
+        if (onFinishCallback) {
+          fallbackTimer = setTimeout(onFinishCallback, 1200);
+        }
+      };
+
+      window.speechSynthesis.speak(utter);
+    }
+
+    function toggleVoiceMute() {
+      voiceEnabled = !voiceEnabled;
+      const btn = document.getElementById('btn-voice-toggle');
+      const icon = document.getElementById('voice-icon');
+      const label = document.getElementById('voice-label');
+
+      if (voiceEnabled) {
+        btn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white flex items-center gap-1 transition';
+        icon.textContent = '🎙️';
+        label.textContent = '開啟';
+        replayVoice();
+      } else {
+        stopSpeech();
+        btn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-300 flex items-center gap-1 transition';
+        icon.textContent = '🔇';
+        label.textContent = '靜音';
+      }
+    }
+
+    function setVoiceRate(rate) {
+      voiceRate = rate;
+      document.querySelectorAll('.rate-btn').forEach(b => {
+        b.className = 'rate-btn px-2 py-1 text-xs rounded-lg text-slate-300 hover:bg-slate-700 font-mono-code';
+      });
+      const id = rate === 0.8 ? 'rate-08' : (rate === 1.0 ? 'rate-10' : 'rate-12');
+      document.getElementById(id).className = 'rate-btn px-2 py-1 text-xs rounded-lg bg-amber-500 text-slate-950 font-bold font-mono-code';
+
+      if (voiceEnabled && steps[currentStep]) {
+        replayVoice();
+      }
+    }
+
+    // =========================================================================
+    // 4. 播放器狀態與 DOM 渲染引擎
+    // =========================================================================
+    let currentRoad = '11011011';
+    let currentK = 1;
+    let currentPassMode = 'zero'; // 預設先看第一趟填平 '0'，最直覺好懂
+    let steps = [];
+    let currentStep = 0;
+
+    function rebuildAndRender(shouldSpeak = true) {
+      stopAutoPlay();
+      stopSpeech();
+      steps = buildFullAnimation(currentRoad, currentK, currentPassMode);
+      currentStep = 0;
+      renderStep(shouldSpeak);
+    }
+
+    function selectPreset(presetId) {
+      document.querySelectorAll('.preset-btn').forEach(b => {
+        b.className = 'preset-btn px-3 py-1.5 rounded-xl text-xs sm:text-sm font-mono-code font-extrabold text-slate-200 bg-slate-700/70 hover:bg-slate-700 border border-slate-600 transition';
+      });
+      const btn = document.getElementById(`preset-${presetId}`);
+      if (btn) {
+        btn.className = 'preset-btn px-3 py-1.5 rounded-xl text-xs sm:text-sm font-mono-code font-extrabold bg-white text-slate-900 shadow transition';
+      }
+
+      if (presetId === 'sample2') {
+        currentRoad = '11011011';
+        currentK = 1;
+      } else if (presetId === 'sample1') {
+        currentRoad = '0110';
+        currentK = 2;
+      }
+      document.getElementById('in-k').value = currentK;
+      document.getElementById('in-line').value = currentRoad;
+      rebuildAndRender(true);
+    }
+
+    function selectPassMode(mode) {
+      currentPassMode = mode;
+      ['zero', 'one', 'both'].forEach(m => {
+        const el = document.getElementById(`pass-${m}`);
+        if (!el) return;
+        el.className = m === mode
+          ? 'pass-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-600 text-white transition'
+          : 'pass-btn px-2.5 py-1 rounded-lg text-xs font-bold text-slate-300 hover:bg-slate-800 transition';
+      });
+      rebuildAndRender(true);
+    }
+
+    function applyCustomRoad() {
+      const rawStr = document.getElementById('in-line').value.replace(/[^01]/g, '');
+      if (!rawStr) return;
+      let kVal = parseInt(document.getElementById('in-k').value, 10);
+      if (isNaN(kVal) || kVal < 0) kVal = 0;
+      if (kVal > rawStr.length) kVal = rawStr.length;
+
+      document.getElementById('in-line').value = rawStr;
+      document.getElementById('in-k').value = kVal;
+      currentRoad = rawStr;
+      currentK = kVal;
+
+      document.querySelectorAll('.preset-btn').forEach(b => {
+        b.className = 'preset-btn px-3 py-1.5 rounded-xl text-xs sm:text-sm font-mono-code font-extrabold text-slate-200 bg-slate-700/70 hover:bg-slate-700 border border-slate-600 transition';
+      });
+
+      rebuildAndRender(true);
+    }
+
+    function resetCurrent() {
+      stopAutoPlay();
+      stopSpeech();
+      currentStep = 0;
+      renderStep(false);
+    }
+
+    function renderStep(shouldSpeak = true) {
+      if (!steps.length) return;
+      const s = steps[currentStep];
+
+      // 進度條與按鈕
+      document.getElementById('step-counter').textContent = `${currentStep + 1} / ${steps.length}`;
+      const pct = steps.length > 1 ? (currentStep / (steps.length - 1)) * 100 : 100;
+      document.getElementById('progress-bar').style.width = `${pct}%`;
+      document.getElementById('btn-prev').disabled = currentStep === 0;
+      document.getElementById('btn-next').disabled = currentStep === steps.length - 1;
+
+      // 雙趟指示膠囊
+      const p1 = document.getElementById('pass-pill-1');
+      const p2 = document.getElementById('pass-pill-2');
+      if (s.passNum === 1) {
+        p1.className = 'px-2.5 py-0.5 rounded-full font-extrabold bg-sky-600 text-white shadow-2xs transition';
+        p2.className = 'px-2.5 py-0.5 rounded-full font-bold bg-slate-300 text-slate-600 transition';
+      } else if (s.passNum === 2) {
+        p1.className = 'px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 transition';
+        p2.className = 'px-2.5 py-0.5 rounded-full font-extrabold bg-purple-600 text-white shadow-2xs transition';
+      } else {
+        p1.className = 'px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 transition';
+        p2.className = 'px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 transition';
+      }
+
+      // 解說卡片
+      const accentMap = {
+        sky: 'bg-sky-600',
+        purple: 'bg-purple-600',
+        amber: 'bg-amber-500',
+        rose: 'bg-rose-600',
+        emerald: 'bg-emerald-600'
+      };
+      document.getElementById('card-accent').className = `absolute left-0 top-0 bottom-0 w-2 ${accentMap[s.accent] || 'bg-indigo-600'}`;
+      document.getElementById('step-badge').textContent = s.badge;
+      document.getElementById('step-title').textContent = s.title;
+      document.getElementById('call-pill').textContent = s.passNum === 3
+        ? `max(len1, len2)`
+        : `maxSubseqLen_Easy(line, '${s.mark}', ${s.k})`;
+      document.getElementById('step-desc').textContent = s.desc;
+      document.getElementById('step-tip').textContent = s.tip;
+
+      // 目標修整徽章
+      const targetBadge = document.getElementById('target-mark-badge');
+      if (s.mark === '0') {
+        targetBadge.className = 'px-2.5 py-0.5 rounded-lg bg-sky-100 text-sky-900 border border-sky-300 font-mono-code text-xs font-extrabold';
+        targetBadge.textContent = `修整目標 mark = '0'（填平凹洞）`;
+      } else {
+        targetBadge.className = 'px-2.5 py-0.5 rounded-lg bg-purple-100 text-purple-900 border border-purple-300 font-mono-code text-xs font-extrabold';
+        targetBadge.textContent = `修整目標 mark = '1'（修平凸起）`;
+      }
+
+      // 更新修補券儀表板 (Repair Vouchers)
+      const voucherBar = document.getElementById('voucher-bar');
+      const voucherKText = document.getElementById('voucher-k-text');
+      const voucherStatusMsg = document.getElementById('voucher-status-msg');
+      const voucherIcons = document.getElementById('voucher-icons');
+      const voucherCounterPill = document.getElementById('voucher-counter-pill');
+
+      const overBudget = s.count > s.k;
+      voucherKText.textContent = `k = ${s.k}`;
+      voucherCounterPill.textContent = `count = ${s.count} / ${s.k}`;
+
+      if (overBudget) {
+        voucherBar.className = 'mb-3 rounded-2xl border-2 border-rose-500 bg-rose-50 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 transition-all';
+        voucherStatusMsg.className = 'text-xs text-rose-700 font-extrabold';
+        voucherStatusMsg.textContent = `⚠️ 超支警報！已用 ${s.count} 張超過上限 ${s.k} 張，旗子 p 必須往右回收券！`;
+        voucherCounterPill.className = 'px-3 py-1 rounded-xl font-mono-code text-xs sm:text-sm font-black bg-rose-600 text-white animate-pulse';
+      } else {
+        voucherBar.className = 'mb-3 rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 transition-all';
+        voucherStatusMsg.className = 'text-xs text-slate-600 font-semibold';
+        voucherStatusMsg.textContent = s.k === 0
+          ? '本測資 k = 0（零容忍，遇到目標字元就必須跳過）'
+          : `目前使用 ${s.count} 張修補券（尚餘 ${Math.max(0, s.k - s.count)} 張可用），路段合法！`;
+        voucherCounterPill.className = 'px-3 py-1 rounded-xl font-mono-code text-xs sm:text-sm font-black bg-slate-800 text-emerald-300';
+      }
+
+      // 繪製每一張修補券視覺圖示
+      if (s.k === 0 && s.count === 0) {
+        voucherIcons.innerHTML = `<span class="text-xs font-mono-code text-slate-400 px-2 py-1 rounded bg-slate-200/70">無修補券 (0張)</span>`;
+      } else {
+        const totalShow = Math.max(s.k, s.count);
+        let ticketsHtml = '';
+        for (let t = 0; t < totalShow; t++) {
+          if (t < s.k && t < s.count) {
+            ticketsHtml += `<span class="px-2 py-0.5 rounded-lg bg-amber-400 text-slate-950 text-xs font-extrabold border border-amber-500 shadow-2xs">🎟️ 已用</span>`;
+          } else if (t < s.k && t >= s.count) {
+            ticketsHtml += `<span class="px-2 py-0.5 rounded-lg bg-white text-slate-400 text-xs font-bold border border-dashed border-slate-300">🎟️ 可用</span>`;
+          } else {
+            ticketsHtml += `<span class="px-2 py-0.5 rounded-lg bg-rose-600 text-white text-xs font-extrabold border border-rose-700 shadow-2xs">🚨 超支 +1</span>`;
+          }
+        }
+        voucherIcons.innerHTML = ticketsHtml;
+      }
+
+      // 渲染道路記憶體格子 [0 .. n]
+      const grid = document.getElementById('road-grid');
+      grid.innerHTML = s.chars.map((ch, idx) => {
+        const addr = `0x10${idx.toString(16).toUpperCase().padStart(2, '0')}`;
+        const inWindow = (idx >= s.p && idx < s.q);
+        const isNull = (ch === '\0');
+        const isTargetMark = (!isNull && ch === s.mark);
+
+        let cellStyle = 'border-slate-300 bg-white';
+        let charHtml = '';
+        let terrainTag = '';
+
+        if (isNull) {
+          cellStyle = 'border-rose-300 bg-rose-50/50';
+          charHtml = `<span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-black text-xs sm:text-sm border border-rose-300">\\0</span>`;
+          terrainTag = `<span class="text-[9px] text-rose-500 font-bold">結尾</span>`;
+        } else {
+          if (inWindow) {
+            cellStyle = isTargetMark
+              ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-300'
+              : 'border-indigo-500 bg-indigo-50/70 ring-2 ring-indigo-300';
+          } else if (isTargetMark) {
+            cellStyle = 'border-slate-300 bg-slate-100/80';
+          }
+
+          const numColor = ch === '1' ? 'text-slate-900' : 'text-slate-600';
+          charHtml = `<span class="font-mono-code font-black text-lg sm:text-xl ${numColor}">${ch}</span>`;
+
+          if (inWindow && isTargetMark) {
+            terrainTag = `<span class="px-1 rounded bg-amber-200 text-amber-950 text-[9px] font-extrabold">🎟️已修</span>`;
+          } else {
+            terrainTag = ch === '1'
+              ? `<span class="text-[9px] text-slate-400 font-bold">▲凸</span>`
+              : `<span class="text-[9px] text-slate-400 font-bold">▼凹</span>`;
+          }
+        }
+
+        // 單格高亮動畫
+        if (s.highlightIdx === idx) {
+          if (s.highlightType === 'overflow') {
+            cellStyle = 'anim-overflow border-rose-600 bg-rose-100 ring-4 ring-rose-400';
+          } else if (s.highlightType === 'release') {
+            cellStyle = 'anim-release border-emerald-600 bg-emerald-100 ring-4 ring-emerald-300';
+          } else {
+            cellStyle += ' anim-scan ring-4 ring-amber-300 border-amber-500';
+          }
+        }
+
+        // 上方指標標籤 p (起點旗子) 與 q (探路工程師)
+        let badges = [];
+        if (s.p === idx) {
+          badges.push(`<span class="px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] font-mono-code font-extrabold shadow whitespace-nowrap">🚩 p (旗子)</span>`);
+        }
+        if (s.q === idx) {
+          badges.push(`<span class="px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 text-[10px] font-mono-code font-extrabold shadow whitespace-nowrap">👷 q (工程師)</span>`);
+        }
+
+        const topOverlay = badges.length > 0
+          ? `<div class="absolute -top-13 flex flex-col items-center gap-0.5 z-10">${badges.join('')}<span class="text-slate-700 text-[11px] leading-none font-black">▼</span></div>`
+          : '';
+
+        const bracketBar = inWindow
+          ? `<div class="w-full h-1.5 bg-indigo-600 rounded-full mt-1"></div>`
+          : `<div class="w-full h-1.5 bg-transparent mt-1"></div>`;
+
+        return `
+          <div class="relative flex flex-col items-center">
+            ${topOverlay}
+            <div class="mem-cell w-11 h-14 sm:w-12 sm:h-16 rounded-2xl border-2 ${cellStyle} flex flex-col items-center justify-center shadow-2xs">
+              ${charHtml}
+              ${terrainTag}
+            </div>
+            ${bracketBar}
+            <span class="text-[11px] font-mono-code text-slate-700 font-bold mt-0.5">[${idx}]</span>
+            <span class="text-[9px] font-mono-code text-slate-400">${addr}</span>
+          </div>
+        `;
+      }).join('');
+
+      // 指標相減公式與雙趟分數看板
+      const pAddr = `0x10${s.p.toString(16).toUpperCase().padStart(2, '0')}`;
+      const qAddr = `0x10${s.q.toString(16).toUpperCase().padStart(2, '0')}`;
+      document.getElementById('ptr-math-formula').innerHTML =
+        `q (${qAddr}) - p (${pAddr}) = <strong class="text-amber-300 text-base sm:text-lg">${s.q - s.p}</strong>`;
+      document.getElementById('cur-lenmax-pill').textContent = `lenMax = ${s.lenMax}`;
+
+      const valLen1 = document.getElementById('val-len1');
+      const cardLen1 = document.getElementById('card-len1');
+      if (s.len1Val !== null) {
+        valLen1.textContent = s.len1Val;
+        valLen1.className = 'text-base sm:text-lg font-black text-sky-800';
+        cardLen1.className = 'rounded-xl border-2 border-sky-400 bg-sky-50 p-2 transition-all';
+      } else {
+        valLen1.textContent = s.passNum === 1 ? `${s.lenMax}...` : '-';
+        valLen1.className = 'text-base sm:text-lg font-black text-slate-400';
+        cardLen1.className = 'rounded-xl border-2 border-slate-200 bg-slate-50 p-2 transition-all';
+      }
+
+      const valLen2 = document.getElementById('val-len2');
+      const cardLen2 = document.getElementById('card-len2');
+      if (s.len2Val !== null) {
+        valLen2.textContent = s.len2Val;
+        valLen2.className = 'text-base sm:text-lg font-black text-purple-800';
+        cardLen2.className = 'rounded-xl border-2 border-purple-400 bg-purple-50 p-2 transition-all';
+      } else {
+        valLen2.textContent = s.passNum === 2 ? `${s.lenMax}...` : '-';
+        valLen2.className = 'text-base sm:text-lg font-black text-slate-400';
+        cardLen2.className = 'rounded-xl border-2 border-slate-200 bg-slate-50 p-2 transition-all';
+      }
+
+      const valAns = document.getElementById('val-ans');
+      const cardAns = document.getElementById('card-ans');
+      if (s.finalAns !== null) {
+        valAns.textContent = s.finalAns;
+        valAns.className = 'text-lg sm:text-xl font-black text-emerald-400';
+        cardAns.className = 'anim-max rounded-xl border-2 border-emerald-500 bg-slate-900 text-white p-2 shadow-md transition-all';
+      } else {
+        valAns.textContent = '-';
+        valAns.className = 'text-base sm:text-lg font-black text-slate-500';
+        cardAns.className = 'rounded-xl border-2 border-slate-200 bg-slate-900 text-white p-2 transition-all';
+      }
+
+      // Watch Window 變數監控（完整呈現 *p, *q, count, k, q - p, lenMax）
+      const watchData = {
+        mark: `'${s.mark}'`,
+        k: s.k,
+        count: `${s.count} / ${s.k}`,
+        '*p': s.starP === '\0' ? "'\\0'" : `'${s.starP}'`,
+        '*q': s.starQ === '\0' ? "'\\0'" : `'${s.starQ}'`,
+        p: `[${s.p}] (${pAddr})`,
+        q: `[${s.q}] (${qAddr})`,
+        'q - p / lenMax': `${s.q - s.p} / ${s.lenMax}`
+      };
+      document.getElementById('watch-grid').innerHTML = Object.entries(watchData).map(([k, v]) => `
+        <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 flex flex-col">
+          <span class="text-[10px] text-slate-500 font-semibold">${k}</span>
+          <span class="font-extrabold text-indigo-700 truncate mt-0.5" title="${v}">${v}</span>
+        </div>
+      `).join('');
+
+      // 右側程式碼行同步高亮
+      CPP_LINES.forEach(item => {
+        const el = document.getElementById(`rf-ln-${item.ln}`);
+        if (!el) return;
+        if (s.codeLines.includes(item.ln)) {
+          el.className = 'flex items-start px-2 py-0.5 rounded-lg bg-amber-400/20 border-l-4 border-amber-400 text-amber-200 font-bold transition-colors duration-150';
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+          el.className = 'flex items-start px-2 py-0.5 rounded-lg text-slate-300 hover:bg-slate-800/60 transition-colors duration-150';
+        }
+      });
+
+      // 語音旁白播放
+      if (shouldSpeak) {
+        speakText(s.voice, () => {
+          if (isAutoPlaying) {
+            if (currentStep < steps.length - 1) {
+              currentStep++;
+              renderStep(true);
+            } else {
+              stopAutoPlay();
+            }
+          }
+        });
+      }
+    }
+
+    function nextStep() {
+      stopAutoPlay();
+      if (currentStep < steps.length - 1) {
+        currentStep++;
+        renderStep(true);
+      }
+    }
+
+    function prevStep() {
+      stopAutoPlay();
+      if (currentStep > 0) {
+        currentStep--;
+        renderStep(true);
+      }
+    }
+
+    function replayVoice() {
+      if (steps[currentStep]) {
+        speakText(steps[currentStep].voice, isAutoPlaying ? () => {
+          if (currentStep < steps.length - 1) {
+            currentStep++;
+            renderStep(true);
+          } else {
+            stopAutoPlay();
+          }
+        } : null);
+      }
+    }
+
+    function startAutoPlay() {
+      isAutoPlaying = true;
+      document.getElementById('auto-icon').textContent = '⏸';
+      document.getElementById('auto-text').textContent = '暫停連續播放';
+      document.getElementById('btn-auto').classList.replace('bg-indigo-600', 'bg-amber-600');
+      document.getElementById('btn-auto').classList.replace('hover:bg-indigo-500', 'hover:bg-amber-500');
+
+      if (currentStep >= steps.length - 1) {
+        currentStep = 0;
+      }
+      renderStep(true);
+    }
+
+    function stopAutoPlay() {
+      isAutoPlaying = false;
+      document.getElementById('auto-icon').textContent = '🔊';
+      document.getElementById('auto-text').textContent = '自動連續播放';
+      document.getElementById('btn-auto').classList.replace('bg-amber-600', 'bg-indigo-600');
+      document.getElementById('btn-auto').classList.replace('hover:bg-amber-500', 'hover:bg-indigo-500');
+    }
+
+    function toggleAutoPlay() {
+      if (isAutoPlaying) {
+        stopAutoPlay();
+        stopSpeech();
+      } else {
+        startAutoPlay();
+      }
+    }
+
+    // =========================================================================
+    // 5. 防選取、防複製與快捷鍵保護
+    // =========================================================================
+    let toastTimer = null;
+    function showCopyLockToast() {
+      const toast = document.getElementById('copy-lock-toast');
+      if (!toast) return;
+      toast.classList.remove('opacity-0', 'translate-y-2');
+      toast.classList.add('opacity-100', 'translate-y-0');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', 'translate-y-2');
+      }, 2000);
+    }
+
+    function setupAntiCopyProtection() {
+      const isEditable = (target) => target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+
+      document.addEventListener('contextmenu', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+          showCopyLockToast();
+        }
+      });
+
+      document.addEventListener('selectstart', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+        }
+      });
+
+      document.addEventListener('copy', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+          showCopyLockToast();
+        }
+      });
+
+      document.addEventListener('cut', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+          showCopyLockToast();
+        }
+      });
+
+      document.addEventListener('dragstart', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+        }
+      });
+    }
+
+    window.addEventListener('keydown', (e) => {
+      const isInputFocused = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+
+      if (!isInputFocused && (e.ctrlKey || e.metaKey)) {
+        const key = e.key.toLowerCase();
+        if (['c', 'a', 'x', 's', 'u'].includes(key)) {
+          e.preventDefault();
+          showCopyLockToast();
+          return;
+        }
+      }
+
+      if (isInputFocused || (document.activeElement && document.activeElement.tagName === 'SELECT')) return;
+      if (e.key === 'ArrowRight') nextStep();
+      if (e.key === 'ArrowLeft') prevStep();
+      if (e.key === ' ') {
+        e.preventDefault();
+        toggleAutoPlay();
+      }
+    });
+
+    window.onload = function () {
+      setupAntiCopyProtection();
+      renderCodePanel();
+      steps = buildFullAnimation(currentRoad, currentK, currentPassMode);
+      currentStep = 0;
+      renderStep(false);
+    };
+  </script>
+</body>
+</html>

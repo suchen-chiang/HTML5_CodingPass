@@ -1,0 +1,1313 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>P1605 端到端全流程（輸入解析 + insertString 雙向合併）語音互動教學動畫</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', 'Noto Sans TC', sans-serif;
+      background-color: #f1f5f9;
+      color: #0f172a;
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+    }
+    input, textarea, select {
+      user-select: text;
+      -webkit-user-select: text;
+      -moz-user-select: text;
+      -ms-user-select: text;
+    }
+    .no-copy-zone {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+      -moz-user-select: none !important;
+      -ms-user-select: none !important;
+    }
+    .font-mono-code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .mem-cell {
+      transition: all 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    @keyframes scanFlash {
+      0% { transform: scale(1.16); background-color: #fef08a; border-color: #eab308; box-shadow: 0 0 18px rgba(234, 179, 8, 0.55); }
+      100% { transform: scale(1); }
+    }
+    @keyframes shiftFlash {
+      0% { transform: scale(1.18) translateY(-3px); background-color: #ddd6fe; border-color: #7c3aed; box-shadow: 0 0 18px rgba(124, 58, 237, 0.55); }
+      100% { transform: scale(1) translateY(0); }
+    }
+    @keyframes magicNullFlash {
+      0% { transform: scale(1.26) rotate(-3deg); background-color: #fecaca; border-color: #dc2626; box-shadow: 0 0 24px rgba(220, 38, 38, 0.7); }
+      50% { transform: scale(1.15) rotate(2deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+    @keyframes jumpFlash {
+      0% { transform: scale(1.15); border-color: #0284c7; box-shadow: 0 0 16px rgba(2, 132, 199, 0.5); }
+      100% { transform: scale(1); }
+    }
+    .anim-scan  { animation: scanFlash 0.65s ease-out; }
+    .anim-shift { animation: shiftFlash 0.65s ease-out; }
+    .anim-null  { animation: magicNullFlash 0.85s ease-out; }
+    .anim-jump  { animation: jumpFlash 0.6s ease-out; }
+
+    /* 語音音波動畫 */
+    @keyframes soundWave {
+      0%, 100% { height: 5px; }
+      50% { height: 17px; }
+    }
+    .wave-bar { animation: soundWave 0.7s ease-in-out infinite; }
+    .wave-bar:nth-child(2) { animation-delay: 0.15s; }
+    .wave-bar:nth-child(3) { animation-delay: 0.3s; }
+    .wave-bar:nth-child(4) { animation-delay: 0.45s; }
+
+    ::-webkit-scrollbar { height: 8px; width: 8px; }
+    ::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 9999px; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- 頂部簡報控制列 -->
+  <header class="bg-slate-900 text-white shadow-lg border-b border-slate-800 sticky top-0 z-30">
+    <div class="max-w-[1520px] mx-auto px-4 py-3 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500 via-rose-500 to-indigo-600 flex items-center justify-center font-mono-code font-black text-base shadow-inner border border-white/20">
+          P1605
+        </div>
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="px-2.5 py-0.5 text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 rounded-full">完整端到端流程教學</span>
+            <h1 class="text-lg sm:text-xl font-black tracking-tight">輸入解析 (atoi/strchr/strrchr) ➔ insertString 指標合併全動畫</h1>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">第一階段：原地截斷萃取子字串 • 第二階段：指標傳遞與後端接續 (dir=1) / 前端反向平移 (dir=-1)</p>
+        </div>
+      </div>
+
+      <!-- 播放與語音控制列 -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="btn-prev" onclick="prevStep()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-xs sm:text-sm font-bold border border-slate-700 flex items-center gap-1 transition">
+          <span>◀</span> 上一步
+        </button>
+
+        <button id="btn-replay" onclick="replayVoice()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-amber-950/80 hover:text-amber-200 hover:border-amber-600 text-xs sm:text-sm font-bold border border-slate-700 flex items-center gap-1.5 transition" title="重新朗讀本步驟語音">
+          <span>🔊</span> 重播本步語音
+        </button>
+
+        <button id="btn-next" onclick="nextStep()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-xs sm:text-sm font-bold border border-slate-700 flex items-center gap-1 transition">
+          下一步 <span>▶</span>
+        </button>
+
+        <button id="btn-auto" onclick="toggleAutoPlay()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow flex items-center gap-1.5 transition min-w-[138px] justify-center">
+          <span id="auto-icon">▶</span> <span id="auto-text">自動連續播放</span>
+        </button>
+
+        <button onclick="resetCurrent()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/70 hover:text-rose-200 hover:border-rose-700 text-xs sm:text-sm font-bold border border-slate-700 transition">
+          ↺ 重置
+        </button>
+
+        <!-- 語音開關與語速 -->
+        <div class="flex items-center bg-slate-800 rounded-xl p-1 border border-slate-700 gap-1">
+          <button id="btn-voice-toggle" onclick="toggleVoiceMute()" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white flex items-center gap-1 transition">
+            <span id="voice-icon">🎙️</span> <span id="voice-label">語音開啟</span>
+          </button>
+          <div class="h-4 w-[1px] bg-slate-700 mx-0.5"></div>
+          <button onclick="setVoiceRate(0.8)" id="rate-08" class="rate-btn px-2 py-1 text-xs rounded-lg text-slate-300 hover:bg-slate-700 font-mono-code">0.8x</button>
+          <button onclick="setVoiceRate(1.0)" id="rate-10" class="rate-btn px-2 py-1 text-xs rounded-lg bg-amber-500 text-slate-950 font-bold font-mono-code">1.0x</button>
+          <button onclick="setVoiceRate(1.2)" id="rate-12" class="rate-btn px-2 py-1 text-xs rounded-lg text-slate-300 hover:bg-slate-700 font-mono-code">1.2x</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 模式切換與自訂模擬控制列 -->
+    <div class="bg-slate-800/95 border-t border-slate-700/80">
+      <div class="max-w-[1520px] mx-auto px-4 py-2.5 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2.5">
+        <!-- 三大完整端到端演示模式 -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="loadMode('pipeline')" id="tab-pipeline" class="mode-tab px-3.5 py-2 rounded-xl text-xs sm:text-sm font-extrabold bg-white text-slate-900 shadow transition flex items-center gap-1.5">
+            <span class="px-1.5 py-0.5 rounded bg-indigo-600 text-white font-mono-code text-xs">完整串接</span>
+            <span>1"front some" ➔ -1"Sometimes " 全流程</span>
+          </button>
+          <button onclick="loadMode('single1')" id="tab-single1" class="mode-tab px-3.5 py-2 rounded-xl text-xs sm:text-sm font-extrabold text-slate-200 bg-slate-700/70 hover:bg-slate-700 border border-slate-600 transition flex items-center gap-1.5">
+            <span class="px-1.5 py-0.5 rounded bg-sky-600 text-white font-mono-code text-xs">dir = 1</span>
+            <span>解析 1"front some" + 後端接續</span>
+          </button>
+          <button onclick="loadMode('single-1')" id="tab-single-1" class="mode-tab px-3.5 py-2 rounded-xl text-xs sm:text-sm font-extrabold text-slate-200 bg-slate-700/70 hover:bg-slate-700 border border-slate-600 transition flex items-center gap-1.5">
+            <span class="px-1.5 py-0.5 rounded bg-purple-600 text-white font-mono-code text-xs">dir = -1</span>
+            <span>解析 -1"Sometimes " + 前端插入</span>
+          </button>
+        </div>
+
+        <!-- 自訂指令全流程模擬器 -->
+        <div class="flex flex-wrap items-center gap-2 bg-slate-900/90 border border-slate-700 rounded-xl px-3 py-1.5">
+          <span class="text-xs text-slate-400 font-bold">自訂全流程：</span>
+          <label class="flex items-center gap-1 text-xs text-slate-300 font-mono-code">
+            <span>舊result=</span>
+            <input id="in-init-res" type="text" maxlength="10" value="World" placeholder="可留空" class="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-emerald-300 font-bold w-20 focus:outline-none focus:border-emerald-400" />
+          </label>
+          <label class="flex items-center gap-1 text-xs text-slate-300 font-mono-code">
+            <span>輸入指令=</span>
+            <input id="in-raw-cmd" type="text" maxlength="18" value='-1"Hello "' placeholder='如 1"abc"' class="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-amber-300 font-bold w-28 focus:outline-none focus:border-amber-400" />
+          </label>
+          <button onclick="applyCustomPipeline()" class="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-xs">
+            套用並播放全流程
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 階段指示條與進度列 -->
+  <div class="bg-slate-200/90 border-b border-slate-300">
+    <div class="max-w-[1520px] mx-auto px-4 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span id="stage-pill-1" class="px-2.5 py-0.5 rounded-full font-extrabold bg-amber-500 text-slate-950 shadow-2xs transition">
+          階段一：main() 輸入解析與原地截斷
+        </span>
+        <span class="text-slate-400 font-black">➔</span>
+        <span id="stage-pill-2" class="px-2.5 py-0.5 rounded-full font-bold bg-slate-300 text-slate-600 transition">
+          階段二：insertString() 指標移動合併
+        </span>
+        <div id="speaking-indicator" class="hidden items-center gap-1.5 text-emerald-700 font-extrabold bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300 ml-1">
+          <div class="flex items-end gap-0.5 h-3.5">
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+          </div>
+          <span>語音講解中...</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <span class="hidden md:inline text-slate-500">快捷鍵：<kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px]">←</kbd> <kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px]">→</kbd> 單步 / <kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px]">Space</kbd> 播放暫停</span>
+        <span>步驟進度：<strong id="step-counter" class="text-indigo-700 font-mono-code text-sm">1 / 1</strong></span>
+        <div class="w-28 sm:w-40 h-2 bg-slate-300 rounded-full overflow-hidden">
+          <div id="progress-bar" class="h-full bg-indigo-600 transition-all duration-200" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主工作區：左側雙緩衝區記憶體動畫舞台 + 右側完整 C++ 程式碼 -->
+  <main class="flex-1 max-w-[1520px] w-full mx-auto p-4 sm:p-5 grid grid-cols-1 xl:grid-cols-12 gap-5">
+
+    <!-- 左側 7 欄：視覺化動畫舞台 -->
+    <div class="xl:col-span-7 flex flex-col gap-4">
+
+      <!-- 1. 步驟講解與即時語音字幕大看板 -->
+      <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 relative overflow-hidden">
+        <div id="card-accent" class="absolute left-0 top-0 bottom-0 w-2 bg-amber-500"></div>
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+          <div class="flex items-center gap-2.5">
+            <span id="step-badge" class="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-900">階段一 • 步驟 1</span>
+            <h2 id="step-title" class="text-lg sm:text-2xl font-black text-slate-900">載入中...</h2>
+          </div>
+          <span id="cmd-pill" class="px-3 py-1 rounded-xl bg-slate-900 text-amber-300 font-mono-code text-xs sm:text-sm font-bold">
+            輸入：1"front some"
+          </span>
+        </div>
+
+        <p id="step-desc" class="text-base sm:text-lg text-slate-700 leading-relaxed font-medium">
+          請點擊「下一步」或「自動連續播放」開始觀看完整流程。
+        </p>
+
+        <div class="mt-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-2.5">
+          <span class="text-lg leading-none mt-0.5">💡</span>
+          <div id="step-tip" class="text-xs sm:text-sm text-amber-950 font-semibold leading-snug">
+            教學提示
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 雙記憶體緩衝區舞台：上方 line[] (解析來源) + 下方 result[] (目的陣列) -->
+      <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 flex-1 flex flex-col justify-between gap-3">
+
+        <!-- 上方緩衝區：char line[2000] -->
+        <div id="line-section" class="rounded-2xl p-3.5 border-2 border-amber-300 bg-amber-50/20 transition-all">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-amber-500"></span>
+              <h3 class="text-sm sm:text-base font-black text-slate-900">
+                ① 輸入緩衝區 <code class="font-mono-code text-amber-800 bg-amber-100 px-2 py-0.5 rounded-lg">char line[2000]</code>
+              </h3>
+              <span class="text-xs text-slate-500 font-mono-code">(0x1000 起)</span>
+            </div>
+
+            <!-- line 指標圖例 -->
+            <div class="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+              <span class="px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-mono-code">atoi 掃描</span>
+              <span class="px-2 py-0.5 rounded bg-rose-600 text-white font-mono-code">first_quote</span>
+              <span class="px-2 py-0.5 rounded bg-orange-600 text-white font-mono-code">last_quote</span>
+              <span class="px-2 py-0.5 rounded bg-emerald-600 text-white font-mono-code">source (first_quote+1)</span>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto pb-2">
+            <div id="line-grid" class="inline-flex gap-1.5 pt-14 pb-1 px-1 min-w-full justify-start sm:justify-center">
+              <!-- 由 JS 動態渲染 line[] -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 橋接資料流指示帶（展現 first_quote + 1 零複製傳遞給 source） -->
+        <div class="relative flex items-center justify-center my-0.5">
+          <div class="border-t-2 border-dashed border-slate-300 w-full"></div>
+          <div id="bridge-badge" class="absolute bg-slate-900 text-emerald-300 border border-slate-700 px-4 py-1 rounded-full text-xs font-mono-code font-bold shadow-xs flex items-center gap-2">
+            <span>⬇ 指標傳遞橋接：等待解析雙引號內容...</span>
+          </div>
+        </div>
+
+        <!-- 下方緩衝區：char result[2000] (在 insertString 中稱為 dest) -->
+        <div id="result-section" class="rounded-2xl p-3.5 border-2 border-slate-200 bg-slate-50/40 transition-all">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-indigo-600"></span>
+              <h3 class="text-sm sm:text-base font-black text-slate-900">
+                ② 累積結果陣列 <code class="font-mono-code text-indigo-800 bg-indigo-100 px-2 py-0.5 rounded-lg">char result[2000]</code>
+                <span class="text-xs font-normal text-slate-500">(函式內參數名為 <code class="font-mono-code font-bold text-slate-700">dest</code>)</span>
+              </h3>
+              <span class="text-xs text-slate-500 font-mono-code">(0x2000 起)</span>
+            </div>
+
+            <!-- result 指標圖例 -->
+            <div class="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+              <span class="px-2 py-0.5 rounded bg-slate-800 text-white font-mono-code">dest</span>
+              <span class="px-2 py-0.5 rounded bg-sky-600 text-white font-mono-code">p (寫入)</span>
+              <span class="px-2 py-0.5 rounded bg-purple-600 text-white font-mono-code">tailDest</span>
+              <span class="px-2 py-0.5 rounded bg-emerald-600 text-white font-mono-code">tailResult</span>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto pb-2">
+            <div id="result-grid" class="inline-flex gap-1.5 pt-14 pb-1 px-1 min-w-full justify-start sm:justify-center">
+              <!-- 由 JS 動態渲染 result[] -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部圖例與最終累積字串預覽 -->
+        <div class="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+            <span class="inline-flex items-center gap-1"><span class="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded font-mono-code font-bold">␣</span> 空白字元 <code class="font-mono-code">' '</code></span>
+            <span class="inline-flex items-center gap-1"><span class="px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded font-mono-code font-bold">\0</span> 字串結尾符號</span>
+            <span class="inline-flex items-center gap-1"><span class="px-1.5 py-0.5 bg-slate-100 text-slate-400 rounded font-mono-code">·</span> 未使用空間</span>
+          </div>
+          <div class="bg-slate-900 text-white px-4 py-2 rounded-xl font-mono-code text-xs sm:text-sm flex items-center gap-2 shadow-sm">
+            <span class="text-slate-400">目前 result 字串：</span>
+            <span id="result-preview" class="text-emerald-400 font-black text-base">""</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. 即時變數監控面板 (Watch Window) -->
+      <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4">
+        <h3 class="font-bold text-slate-800 text-xs sm:text-sm mb-2 flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+          指標位址與關鍵變數即時監控器（Watch Window）
+        </h3>
+        <div id="watch-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 font-mono-code text-xs">
+          <!-- 由 JS 動態填入 -->
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 右側 5 欄：完整 C++ 程式碼同步高亮視窗（鎖定防選取複製） -->
+    <div id="code-window-wrapper" class="no-copy-zone xl:col-span-5 bg-slate-900 text-slate-100 rounded-3xl shadow-lg border border-slate-800 flex flex-col overflow-hidden">
+      <div class="px-4 py-3 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <div class="flex gap-1.5">
+            <span class="w-3 h-3 rounded-full bg-rose-500"></span>
+            <span class="w-3 h-3 rounded-full bg-amber-400"></span>
+            <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+          </div>
+          <span class="font-mono-code text-xs sm:text-sm font-bold text-slate-300 ml-2">P1605.cpp 完整端到端追蹤</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="px-2 py-0.5 rounded-md bg-rose-950/80 border border-rose-700/60 text-rose-300 text-[11px] font-bold">🔒 唯讀展示（禁止選取複製）</span>
+        </div>
+      </div>
+
+      <div id="code-panel" class="no-copy-zone p-3 sm:p-4 overflow-y-auto font-mono-code text-xs sm:text-[13px] leading-6 flex-1 select-none">
+        <!-- 完整 C++ 程式碼行由 JS 動態渲染 -->
+      </div>
+
+      <!-- 底部兩階段架構口訣 -->
+      <div class="p-3.5 bg-slate-950/90 border-t border-slate-800 text-xs text-slate-300 space-y-1.5">
+        <div class="font-bold text-amber-300 text-xs sm:text-sm">📌 P1605 兩階段指標協作架構總結：</div>
+        <div class="p-2 rounded-xl bg-slate-900 border border-slate-800">
+          <span class="text-amber-400 font-bold">階段一（main 解析）：</span><code class="text-amber-300">atoi</code> 抓方向 ➔ <code class="text-rose-400">strchr/strrchr</code> 找引號 ➔ <code class="text-rose-400">*last_quote = '\0'</code> 原地切斷，傳入 <code class="text-emerald-400">first_quote + 1</code>。
+        </div>
+        <div class="p-2 rounded-xl bg-slate-900 border border-slate-800">
+          <span class="text-sky-400 font-bold">階段二（insertString）：</span><code class="text-sky-300">pos==1</code> 跳到尾巴覆蓋並補 <code class="text-rose-400">'\0'</code>；<code class="text-purple-300">pos==-1</code> 由後往前平移再填入開頭（無需補 <code class="text-rose-400">'\0'</code>）。
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 防複製溫和提示氣泡 -->
+  <div id="copy-lock-toast" class="fixed bottom-5 right-5 z-50 pointer-events-none opacity-0 translate-y-2 transition-all duration-200 bg-slate-900/95 text-amber-300 border border-amber-500/40 px-4 py-2.5 rounded-2xl shadow-xl text-xs sm:text-sm font-bold flex items-center gap-2">
+    <span>🔒</span>
+    <span>教學展示模式：程式碼視窗已鎖定選取與複製</span>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. 完整 C++ 程式碼定義（insertString + main 完整呈現）
+    // =========================================================================
+    const FULL_CPP_LINES = [
+      { ln: 1,  code: 'void insertString(char* dest, char* source, int pos)' },
+      { ln: 2,  code: '{' },
+      { ln: 3,  code: '    if (pos == 1) { // 【情況 A：後端接續】' },
+      { ln: 4,  code: '        int lenDest = strlen(dest);' },
+      { ln: 5,  code: '        char* p = dest + lenDest;' },
+      { ln: 6,  code: '        while (*source != \'\\0\') *(p++) = *(source++);' },
+      { ln: 7,  code: '        *p = \'\\0\';' },
+      { ln: 8,  code: '    }' },
+      { ln: 9,  code: '    else if (pos == -1) { // 【情況 B：前端插入】' },
+      { ln: 10, code: '        int lenDest = strlen(dest);' },
+      { ln: 11, code: '        int lenSource = strlen(source);' },
+      { ln: 12, code: '        char* tailDest = dest + lenDest;' },
+      { ln: 13, code: '        char* tailResult = tailDest + lenSource;' },
+      { ln: 14, code: '        while (tailDest >= dest) *(tailResult--) = *(tailDest--);' },
+      { ln: 15, code: '        char* p = dest;' },
+      { ln: 16, code: '        while (*source != \'\\0\') *(p++) = *(source++);' },
+      { ln: 17, code: '    }' },
+      { ln: 18, code: '}' },
+      { ln: 19, code: '' },
+      { ln: 20, code: 'int main()' },
+      { ln: 21, code: '{' },
+      { ln: 22, code: '    char result[2000] = "", line[2000];' },
+      { ln: 23, code: '    while (cin.getline(line, 2000)) {' },
+      { ln: 24, code: '        if (line[0] == \'\\0\') continue;' },
+      { ln: 25, code: '        int dir = atoi(line);' },
+      { ln: 26, code: '        if (dir == 0) {' },
+      { ln: 27, code: '            cout << result << "\\n";' },
+      { ln: 28, code: '            result[0] = \'\\0\';' },
+      { ln: 29, code: '        } else {' },
+      { ln: 30, code: '            char* first_quote = strchr(line, \'\\"\');' },
+      { ln: 31, code: '            char* last_quote = strrchr(line, \'\\"\');' },
+      { ln: 32, code: '            if (first_quote && last_quote && last_quote > first_quote) {' },
+      { ln: 33, code: '                *last_quote = \'\\0\';' },
+      { ln: 34, code: '                insertString(result, first_quote + 1, dir);' },
+      { ln: 35, code: '            }' },
+      { ln: 36, code: '        }' },
+      { ln: 37, code: '    }' },
+      { ln: 38, code: '}' }
+    ];
+
+    function renderCodePanel() {
+      const panel = document.getElementById('code-panel');
+      panel.innerHTML = FULL_CPP_LINES.map(item => {
+        const safe = item.code
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        return `
+          <div id="cpp-ln-${item.ln}" class="flex items-start px-2 py-0.5 rounded-lg transition-colors duration-150">
+            <span class="w-7 shrink-0 text-slate-500 text-right pr-3 select-none">${item.ln}</span>
+            <pre class="whitespace-pre overflow-x-auto flex-1">${safe || ' '}</pre>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // =========================================================================
+    // 2. 端到端兩階段步驟生成器（Stage 1 解析 + Stage 2 insertString）
+    // =========================================================================
+    const RESULT_SLOTS = 22;
+
+    function formatSpoken(str) {
+      if (!str) return '空字串';
+      return str.replace(/ /g, ' 空白 ');
+    }
+
+    function createResultMemFromStr(str) {
+      const mem = Array(RESULT_SLOTS).fill(null);
+      for (let i = 0; i < str.length && i < RESULT_SLOTS - 1; i++) {
+        mem[i] = str[i];
+      }
+      mem[Math.min(str.length, RESULT_SLOTS - 1)] = '\0';
+      return mem;
+    }
+
+    function generateTwoStageSteps(rawCmd, startResultMem, prefixLabel = '') {
+      const steps = [];
+      let resMem = startResultMem.slice();
+
+      // 建立 line[] 記憶體
+      const lineMem = rawCmd.split('');
+      lineMem.push('\0');
+
+      const lineAddr = (idx) => `0x10${idx.toString(16).toUpperCase().padStart(2, '0')}`;
+      const resAddr  = (idx) => idx < 0 ? '0x1FFF' : `0x20${idx.toString(16).toUpperCase().padStart(2, '0')}`;
+
+      // 計算數字區間（模擬 atoi）
+      let i = 0;
+      while (i < rawCmd.length && rawCmd[i] === ' ') i++;
+      const numStart = i;
+      if (i < rawCmd.length && (rawCmd[i] === '-' || rawCmd[i] === '+')) i++;
+      while (i < rawCmd.length && rawCmd[i] >= '0' && rawCmd[i] <= '9') i++;
+      const numEnd = i;
+      const dir = parseInt(rawCmd, 10) || 0;
+      const numText = rawCmd.slice(numStart, numEnd) || '0';
+      const stopChar = lineMem[numEnd] === '\0' ? '\\0' : lineMem[numEnd];
+
+      // -----------------------------------------------------------------------
+      // 【階段一：main() 輸入解析】
+      // -----------------------------------------------------------------------
+      steps.push({
+        stage: 1,
+        cmd: rawCmd,
+        badge: `${prefixLabel}階段一 (1/5) • 讀入整行`,
+        title: `cin.getline(line, 2000) 將整行指令讀入 line[]`,
+        desc: `程式從輸入流讀取整行指令 ${rawCmd} 存入 line 陣列（位址 0x1000 起），並在尾端自動補上結束符號 '\\0'。此時方向數字與引號文字都還在同一個陣列中。`,
+        voice: `${prefixLabel ? prefixLabel + '，' : ''}第一階段，使用 cin dot getline 將使用者輸入的 ${rawCmd.replace(/"/g, ' 雙引號 ')} 完整讀入 line 字元陣列中。`,
+        tip: '使用 cin.getline() 可以連同雙引號裡面的空白字元（例如 "front some" 中的空格）完整保留下來！',
+        accent: 'amber',
+        bridgeText: '⬇ 階段一進行中：正在解析 line[] 陣列...',
+        codeLines: [23],
+        lineMem: lineMem.slice(),
+        linePtrs: { lineStart: 0 },
+        resMem: resMem.slice(),
+        resPtrs: { dest: 0 },
+        watch: { line: lineAddr(0), result: resAddr(0) }
+      });
+
+      steps.push({
+        stage: 1,
+        cmd: rawCmd,
+        badge: `${prefixLabel}階段一 (2/5) • atoi 解析方向`,
+        title: `int dir = atoi(line) 解析出方向 ${dir}`,
+        desc: `atoi() 從 line 開頭讀取數字 "${numText}"，一遇到索引 [${numEnd}] 的非數字字元 '${stopChar}' 便立刻停止掃描，精準抓出整數 dir = ${dir}。`,
+        voice: `接著執行 dir 等於 a t o i line。它讀取開頭的數字 ${numText}，一撞到非數字字元就自動停止，成功解析出方向 ${dir}。`,
+        tip: `atoi() 遇到雙引號 '"' 會自動停下來，完全不會去理會後面的文字內容。`,
+        accent: 'amber',
+        bridgeText: `⬇ 已取得方向 dir = ${dir}，準備尋找左右雙引號`,
+        codeLines: [25],
+        lineMem: lineMem.slice(),
+        linePtrs: { atoiStop: numEnd },
+        lineRange: { start: numStart, end: numEnd - 1, color: 'amber' },
+        resMem: resMem.slice(),
+        resPtrs: { dest: 0 },
+        watch: { dir, '停止位置': `line[${numEnd}] ('${stopChar}')` }
+      });
+
+      if (dir === 0) {
+        steps.push({
+          stage: 1,
+          cmd: rawCmd,
+          badge: `${prefixLabel}結束指令 • dir == 0`,
+          title: `dir == 0：輸出最終 result 並將 result[0] 歸零重置`,
+          desc: `因為方向為 0，代表本組測試結束！程式印出目前累積的字串，並將 result[0] 設為 '\\0' 清空，準備迎接下一筆測資。`,
+          voice: '解析出來的 dir 等於 0，代表本組測試結束，印出累積結果並清空 result 陣列。',
+          tip: '只要把 result[0] 設為 \'\\0\'，在 C 語言中就代表空字串了！',
+          accent: 'emerald',
+          bridgeText: '✔ 本組測試結束，輸出累積結果',
+          codeLines: [26, 27, 28],
+          lineMem: lineMem.slice(),
+          linePtrs: {},
+          resMem: createResultMemFromStr(''),
+          resPtrs: { dest: 0 },
+          watch: { dir: 0, 'result[0]': "'\\0'" }
+        });
+        return { steps, nextResMem: createResultMemFromStr('') };
+      }
+
+      const firstQ = rawCmd.indexOf('"');
+      const lastQ = rawCmd.lastIndexOf('"');
+
+      if (firstQ === -1 || lastQ === -1 || lastQ <= firstQ) {
+        return { steps, nextResMem: resMem };
+      }
+
+      steps.push({
+        stage: 1,
+        cmd: rawCmd,
+        badge: `${prefixLabel}階段一 (3/5) • 尋找頭尾雙引號`,
+        title: `strchr 與 strrchr 分別定位左右雙引號位址`,
+        desc: `first_quote = strchr(line, '"') 從左往右找到第一個 '"'（索引 [${firstQ}]）；last_quote = strrchr(line, '"') 從右往左找到最後一個 '"'（索引 [${lastQ}]）。兩根指標剛好把真正的文字夾在中間！`,
+        voice: `再來用 s t r c h r 從左邊找第一個雙引號，定位在索引 ${firstQ}；用 s t r r c h r 從尾巴反向找最後一個雙引號，定位在索引 ${lastQ}。`,
+        tip: 'strrchr 多了一個 r（reverse），專門用來從字串尾巴往回找最後一次出現的字元。',
+        accent: 'rose',
+        bridgeText: `⬇ 雙引號已夾出區間：索引 [${firstQ}] 與 [${lastQ}]`,
+        codeLines: [30, 31, 32],
+        lineMem: lineMem.slice(),
+        linePtrs: { first: firstQ, last: lastQ },
+        lineHighlight: { idx: lastQ, type: 'scan' },
+        resMem: resMem.slice(),
+        resPtrs: { dest: 0 },
+        watch: { dir, first_quote: lineAddr(firstQ), last_quote: lineAddr(lastQ) }
+      });
+
+      // 原地截斷 *last_quote = '\0'
+      lineMem[lastQ] = '\0';
+      const extracted = rawCmd.slice(firstQ + 1, lastQ);
+      const srcStartIdx = firstQ + 1;
+
+      steps.push({
+        stage: 1,
+        cmd: rawCmd,
+        badge: `${prefixLabel}階段一 (4/5) • 原地改寫結尾符號`,
+        title: `*last_quote = '\\0' 將右側雙引號原地改寫為結束符號！`,
+        desc: `對 last_quote 所指的索引 [${lastQ}] 寫入 '\\0'，原本的右雙引號當場變成字串結束符號！這樣一來，不需額外開陣列複製，字串尾巴就被精準切斷了！`,
+        voice: `關鍵步驟！執行星號 last quote 等於斜線零，在尾巴加上字串結束符號，直接把右邊的雙引號覆蓋成斜線零，零複製切斷字串尾巴！`,
+        tip: '這就是指標「原地修改（In-place Modification）」的威力：直接改寫記憶體中的一個位元組就完成切割。',
+        accent: 'rose',
+        bridgeText: `⬇ 尾巴已改寫為 '\\0'！準備將 first_quote + 1 傳入 insertString`,
+        codeLines: [33],
+        lineMem: lineMem.slice(),
+        linePtrs: { first: firstQ, last: lastQ },
+        lineHighlight: { idx: lastQ, type: 'null' },
+        resMem: resMem.slice(),
+        resPtrs: { dest: 0 },
+        watch: { dir, '*last_quote': "'\\0'", '截斷後內容': `"${extracted}"` }
+      });
+
+      steps.push({
+        stage: 1,
+        cmd: rawCmd,
+        badge: `${prefixLabel}階段一 (5/5) • 指標傳遞進入函式`,
+        title: `呼叫 insertString(result, first_quote + 1, ${dir})`,
+        desc: `指標算術 first_quote + 1 往右跳過左雙引號，直接指向索引 [${srcStartIdx}]（'${extracted[0] || '\\0'}'）。這個位址作為 source 參數直接傳進 insertString()，一路讀到剛剛改寫的 '\\0' 剛好就是 "${extracted}"！`,
+        voice: `現在呼叫 insertString，把 result 傳給 dest，並把 first quote 加一也就是索引 ${srcStartIdx} 的位址傳給 source，直接指向真正的字串內容 ${formatSpoken(extracted)}，正式進入第二階段！`,
+        tip: `注意看上方 line 陣列中綠色框選的 "${extracted}"，它不需要被複製到暫存變數，而是直接透過指標位址傳遞！`,
+        accent: 'emerald',
+        bridgeText: `⬇ 指標傳遞：source = first_quote + 1 (${lineAddr(srcStartIdx)}) ➔ "${extracted}"`,
+        codeLines: [34, 1],
+        lineMem: lineMem.slice(),
+        linePtrs: { first: firstQ, source: srcStartIdx, last: lastQ },
+        lineRange: { start: srcStartIdx, end: lastQ - 1, color: 'emerald' },
+        resMem: resMem.slice(),
+        resPtrs: { dest: 0 },
+        watch: { dir, source: `${lineAddr(srcStartIdx)} ("${extracted}")`, dest: resAddr(0) }
+      });
+
+      // -----------------------------------------------------------------------
+      // 【階段二：insertString(dest, source, pos) 執行合併】
+      // -----------------------------------------------------------------------
+      let lenDest = 0;
+      while (resMem[lenDest] !== '\0' && resMem[lenDest] !== null) lenDest++;
+      const lenSource = extracted.length;
+
+      if (dir === 1) {
+        // === dir == 1：後端接續 ===
+        steps.push({
+          stage: 2,
+          cmd: rawCmd,
+          badge: `${prefixLabel}階段二 (pos=1) • 定位 dest 結尾`,
+          title: `lenDest = ${lenDest}，指標 p = dest + ${lenDest} 指到 '\\0'`,
+          desc: `進入 pos == 1 分支！計算出 dest 目前長度為 ${lenDest}。執行 p = dest + ${lenDest}，讓指標 p 精準指向 result[${lenDest}]（原本 '\\0' 的位置），準備接續複製 "${extracted}"。`,
+          voice: `進入第二階段，因為 dir 等於 1，表示要把 source 接續在 dest 後面。指標 p 會加上 dest 的長度 ${lenDest}，直接指到 dest 最後面的結束符號斜線零。`,
+          tip: '如果原本 result 是空字串（lenDest = 0），p = dest + 0 就會直接指在 result[0] 的 \'\\0\' 上！',
+          accent: 'sky',
+          bridgeText: `⬇ source (${lineAddr(srcStartIdx)}) 準備複製到 p (${resAddr(lenDest)})`,
+          codeLines: [3, 4, 5],
+          lineMem: lineMem.slice(),
+          linePtrs: { source: srcStartIdx },
+          lineRange: { start: srcStartIdx, end: lastQ - 1, color: 'emerald' },
+          resMem: resMem.slice(),
+          resPtrs: { dest: 0, p: lenDest },
+          resHighlight: { idx: lenDest, type: 'jump' },
+          watch: { pos: 1, lenDest, p: `${resAddr(lenDest)} (dest+${lenDest})`, source: lineAddr(srcStartIdx) }
+        });
+
+        let pIdx = lenDest;
+        for (let k = 0; k < lenSource; k++) {
+          const ch = extracted[k];
+          const chSpoken = ch === ' ' ? '空白' : ch;
+          resMem[pIdx] = ch;
+
+          steps.push({
+            stage: 2,
+            cmd: rawCmd,
+            badge: `${prefixLabel}階段二 (pos=1) • 逐字複製 (${k + 1}/${lenSource})`,
+            title: `*(p++) = *(source++) 複製 '${chSpoken}' 至 result[${pIdx}]`,
+            desc: `將 *source（'${chSpoken}'）寫入 *p（result[${pIdx}]），寫完後 p 與 source 兩根指標同步往右側移動 1 格！`,
+            voice: `指標一一往右側移動，把字元 ${chSpoken} 複製到 result 的索引 ${pIdx}，並同步推進兩根指標。`,
+            tip: '*(p++) = *(source++) 每次執行都會同時完成「讀取、寫入、雙指標右移一格」三個動作。',
+            accent: 'sky',
+            bridgeText: `⬇ 複製中：line[${srcStartIdx + k}] ('${chSpoken}') ➔ result[${pIdx}]`,
+            codeLines: [6],
+            lineMem: lineMem.slice(),
+            linePtrs: { source: srcStartIdx + k + 1 },
+            lineHighlight: { idx: srcStartIdx + k, type: 'scan' },
+            resMem: resMem.slice(),
+            resPtrs: { dest: 0, p: pIdx + 1 },
+            resHighlight: { idx: pIdx, type: 'scan' },
+            watch: {
+              pos: 1,
+              '寫入字元': `'${chSpoken}'`,
+              p: resAddr(pIdx + 1),
+              source: lineAddr(srcStartIdx + k + 1),
+              '*source': k + 1 < lenSource ? `'${extracted[k + 1]}'` : "'\\0'"
+            }
+          });
+          pIdx++;
+        }
+
+        resMem[pIdx] = '\0';
+        steps.push({
+          stage: 2,
+          cmd: rawCmd,
+          badge: `${prefixLabel}階段二 (pos=1) • 補上結尾符號`,
+          title: `*source 碰到 '\\0' 結束迴圈，執行 *p = '\\0' 收尾`,
+          desc: `source 指到 '\\0' 跳出迴圈，最後在指標 p 停下的 result[${pIdx}] 補上新的結束符號 '\\0'！完成後端接續。`,
+          voice: `source 已經碰到斜線零，跳出迴圈，最後在指標 p 停留的索引 ${pIdx} 補上新的結束符號斜線零，完成後端接續！`,
+          tip: '後端接續因為覆蓋掉了原本的 \'\\0\'，結束時一定要執行 *p = \'\\0\'！',
+          accent: 'emerald',
+          bridgeText: `✔ 完成後端接續！result 目前長度為 ${pIdx}`,
+          codeLines: [6, 7],
+          lineMem: lineMem.slice(),
+          linePtrs: { source: srcStartIdx + lenSource },
+          resMem: resMem.slice(),
+          resPtrs: { dest: 0, p: pIdx },
+          resHighlight: { idx: pIdx, type: 'null' },
+          watch: { pos: 1, '*p': "'\\0'", p: resAddr(pIdx), '新長度': pIdx }
+        });
+
+      } else if (dir === -1) {
+        // === dir == -1：前端插入（反向平移 + 填入） ===
+        let tailDestIdx = lenDest;
+        let tailResultIdx = lenDest + lenSource;
+
+        steps.push({
+          stage: 2,
+          cmd: rawCmd,
+          badge: `${prefixLabel}階段二 (pos=-1) • 設定雙尾端指標`,
+          title: `lenDest=${lenDest}, lenSource=${lenSource}：設定 tailDest 與 tailResult`,
+          desc: `進入 pos == -1 分支！要把 "${extracted}" 插在最前面，必須先把原有內容往右平移 ${lenSource} 格。設定 tailDest = dest + ${lenDest}（舊結尾 '\\0'），tailResult = tailDest + ${lenSource}（新結尾 [${tailResultIdx}]）。`,
+          voice: `進入第二階段，因為 dir 等於負一，表示要把 source 插在 dest 的前面。我們先設定兩根尾端指標，tailDest 指向原本結尾，tailResult 往右推 ${lenSource} 格指向新結尾，準備由後往前平移舊資料。`,
+          tip: '必須「由後往前」搬移，才能把開頭空出來且不覆蓋尚未搬移的字元！',
+          accent: 'purple',
+          bridgeText: `⬇ 騰出開頭空間：準備將 result[0..${lenDest}] 右移 ${lenSource} 格`,
+          codeLines: [9, 10, 11, 12, 13],
+          lineMem: lineMem.slice(),
+          linePtrs: { source: srcStartIdx },
+          lineRange: { start: srcStartIdx, end: lastQ - 1, color: 'emerald' },
+          resMem: resMem.slice(),
+          resPtrs: { dest: 0, tailDest: tailDestIdx, tailResult: tailResultIdx },
+          resHighlight: { idx: tailResultIdx, type: 'jump' },
+          watch: {
+            pos: -1,
+            lenDest,
+            lenSource,
+            tailDest: resAddr(tailDestIdx),
+            tailResult: resAddr(tailResultIdx)
+          }
+        });
+
+        while (tailDestIdx >= 0) {
+          const movedCh = resMem[tailDestIdx];
+          const chName = movedCh === '\0' ? '\\0' : (movedCh === ' ' ? '空白' : movedCh);
+          resMem[tailResultIdx] = movedCh;
+          const isLastShift = tailDestIdx === 0;
+
+          steps.push({
+            stage: 2,
+            cmd: rawCmd,
+            badge: `${prefixLabel}階段二 (pos=-1) • 反向平移 (${lenDest - tailDestIdx + 1}/${lenDest + 1})`,
+            title: `將 '${chName}' 從 result[${tailDestIdx}] 搬移至 result[${tailResultIdx}]`,
+            desc: `執行 *(tailResult--) = *(tailDest--)：把 '${chName}' 複製到右邊的 result[${tailResultIdx}]，接著兩根指標同時往左退 1 格。${isLastShift ? '此時 tailDest 退到 0x1FFF（< dest），平移迴圈結束！' : ''}`,
+            voice: `由後往前搬移，把索引 ${tailDestIdx} 的 ${movedCh === '\0' ? '結束符號斜線零' : chName} 複製到索引 ${tailResultIdx}，雙指標同步往左退一格。${isLastShift ? '全部舊資料都安全右移，開頭空間已經騰出來了！' : ''}`,
+            tip: movedCh === '\0'
+              ? `連同原本的 '\\0' 也一起搬到 result[${tailResultIdx}] 了，因此待會填入新字串後不需要再補 '\\0'！`
+              : `由後往前搬移，確保目標格子的資料早一步已安全搬走，絕不會發生覆蓋。`,
+            accent: 'purple',
+            bridgeText: `⬇ 反向平移中：result[${tailDestIdx}] ('${chName}') ➔ result[${tailResultIdx}]`,
+            codeLines: [14],
+            lineMem: lineMem.slice(),
+            linePtrs: { source: srcStartIdx },
+            lineRange: { start: srcStartIdx, end: lastQ - 1, color: 'emerald' },
+            resMem: resMem.slice(),
+            resPtrs: isLastShift
+              ? { dest: 0, tailDestLeftOfStart: true, tailResult: tailResultIdx - 1 }
+              : { dest: 0, tailDest: tailDestIdx - 1, tailResult: tailResultIdx - 1 },
+            resHighlight: { idx: tailResultIdx, type: 'shift', fromIdx: tailDestIdx },
+            vacatedMaxIdx: isLastShift ? lenSource - 1 : -1,
+            watch: {
+              pos: -1,
+              '搬移字元': `'${chName}'`,
+              tailDest: isLastShift ? '0x1FFF (< dest)' : resAddr(tailDestIdx - 1),
+              tailResult: resAddr(tailResultIdx - 1)
+            }
+          });
+
+          tailDestIdx--;
+          tailResultIdx--;
+        }
+
+        // 指標 p 回到開頭填入 source
+        for (let k = 0; k < lenSource; k++) {
+          const ch = extracted[k];
+          const chSpoken = ch === ' ' ? '空白' : ch;
+          resMem[k] = ch;
+          const isFinal = k === lenSource - 1;
+
+          steps.push({
+            stage: 2,
+            cmd: rawCmd,
+            badge: `${prefixLabel}階段二 (pos=-1) • 填入開頭 (${k + 1}/${lenSource})`,
+            title: `*(p++) = *(source++) 填入 '${chSpoken}' 至 result[${k}]`,
+            desc: `指標 p 從 dest[0] 開始，將 '${chSpoken}' 填入騰出的 result[${k}]，雙指標同步右移。${isFinal ? `最後一格填完後，緊接著 result[${k + 1}] 正好是右移後的舊字串開頭，無需再補 '\\0'！` : ''}`,
+            voice: `從開頭填入新字串，把字元 ${chSpoken} 寫入 result 的索引 ${k}。${isFinal ? '所有字元都填入完畢，與後方原本的字串無縫銜接，前端插入大功告成！' : ''}`,
+            tip: isFinal
+              ? `因為舊字串的 '\\0' 已經在剛才一起右移到 result[${lenSource + lenDest}] 了，所以前端插入結束後不需再補 '\\0'！`
+              : `將 source 逐字填入騰出的前段空間。`,
+            accent: isFinal ? 'emerald' : 'sky',
+            bridgeText: isFinal
+              ? `✔ 完成前端插入！兩段字串無縫銜接`
+              : `⬇ 填入開頭：line[${srcStartIdx + k}] ('${chSpoken}') ➔ result[${k}]`,
+            codeLines: k === 0 ? [15, 16] : [16],
+            lineMem: lineMem.slice(),
+            linePtrs: { source: srcStartIdx + k + 1 },
+            lineHighlight: { idx: srcStartIdx + k, type: 'scan' },
+            resMem: resMem.slice(),
+            resPtrs: { dest: 0, p: k + 1 },
+            resHighlight: { idx: k, type: 'scan' },
+            vacatedMaxIdx: lenSource - 1,
+            watch: {
+              pos: -1,
+              '寫入字元': `'${chSpoken}'`,
+              p: resAddr(k + 1),
+              source: lineAddr(srcStartIdx + k + 1),
+              '*source': k + 1 < lenSource ? `'${extracted[k + 1]}'` : "'\\0' (結束)"
+            }
+          });
+        }
+      }
+
+      return { steps, nextResMem: resMem };
+    }
+
+    // 建構三種預設教學模式
+    function buildModeSteps(mode) {
+      if (mode === 'pipeline') {
+        const initMem = createResultMemFromStr('');
+        const run1 = generateTwoStageSteps('1"front some"', initMem, '【第1道指令】');
+        const run2 = generateTwoStageSteps('-1"Sometimes "', run1.nextResMem, '【第2道指令】');
+        return [...run1.steps, ...run2.steps];
+      } else if (mode === 'single1') {
+        const initMem = createResultMemFromStr('');
+        return generateTwoStageSteps('1"front some"', initMem, '').steps;
+      } else {
+        const initMem = createResultMemFromStr('front some');
+        return generateTwoStageSteps('-1"Sometimes "', initMem, '').steps;
+      }
+    }
+
+    // =========================================================================
+    // 3. 語音合成引擎 (Web Speech API - zh-TW)
+    // =========================================================================
+    let voiceEnabled = true;
+    let voiceRate = 1.0;
+    let preferredVoice = null;
+    let isAutoPlaying = false;
+    let fallbackTimer = null;
+
+    function loadVoices() {
+      if (!('speechSynthesis' in window)) return;
+      const voices = window.speechSynthesis.getVoices();
+      preferredVoice =
+        voices.find(v => v.lang === 'zh-TW' && v.name.includes('Google')) ||
+        voices.find(v => v.lang === 'zh-TW' || v.lang === 'zh_TW') ||
+        voices.find(v => v.lang.startsWith('zh'));
+    }
+
+    if ('speechSynthesis' in window) {
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    function stopSpeech() {
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      setSpeakingUI(false);
+    }
+
+    function setSpeakingUI(speaking) {
+      const ind = document.getElementById('speaking-indicator');
+      if (speaking) {
+        ind.classList.remove('hidden');
+        ind.classList.add('flex');
+      } else {
+        ind.classList.add('hidden');
+        ind.classList.remove('flex');
+      }
+    }
+
+    function speakText(text, onFinishCallback) {
+      stopSpeech();
+
+      if (!voiceEnabled || !('speechSynthesis' in window)) {
+        if (onFinishCallback) {
+          fallbackTimer = setTimeout(onFinishCallback, 2400 / voiceRate);
+        }
+        return;
+      }
+
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'zh-TW';
+      if (preferredVoice) utter.voice = preferredVoice;
+      utter.rate = voiceRate;
+      utter.pitch = 1.0;
+
+      utter.onstart = () => setSpeakingUI(true);
+      utter.onend = () => {
+        setSpeakingUI(false);
+        if (onFinishCallback) {
+          fallbackTimer = setTimeout(onFinishCallback, 550);
+        }
+      };
+      utter.onerror = () => {
+        setSpeakingUI(false);
+        if (onFinishCallback) {
+          fallbackTimer = setTimeout(onFinishCallback, 1200);
+        }
+      };
+
+      window.speechSynthesis.speak(utter);
+    }
+
+    function toggleVoiceMute() {
+      voiceEnabled = !voiceEnabled;
+      const btn = document.getElementById('btn-voice-toggle');
+      const icon = document.getElementById('voice-icon');
+      const label = document.getElementById('voice-label');
+
+      if (voiceEnabled) {
+        btn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white flex items-center gap-1 transition';
+        icon.textContent = '🎙️';
+        label.textContent = '語音開啟';
+        replayVoice();
+      } else {
+        stopSpeech();
+        btn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-300 flex items-center gap-1 transition';
+        icon.textContent = '🔇';
+        label.textContent = '純視覺靜音';
+      }
+    }
+
+    function setVoiceRate(rate) {
+      voiceRate = rate;
+      document.querySelectorAll('.rate-btn').forEach(b => {
+        b.className = 'rate-btn px-2 py-1 text-xs rounded-lg text-slate-300 hover:bg-slate-700 font-mono-code';
+      });
+      const id = rate === 0.8 ? 'rate-08' : (rate === 1.0 ? 'rate-10' : 'rate-12');
+      document.getElementById(id).className = 'rate-btn px-2 py-1 text-xs rounded-lg bg-amber-500 text-slate-950 font-bold font-mono-code';
+
+      if (voiceEnabled && steps[currentStep]) {
+        replayVoice();
+      }
+    }
+
+    // =========================================================================
+    // 4. 播放器與雙緩衝區 DOM 渲染引擎
+    // =========================================================================
+    let currentMode = 'pipeline';
+    let steps = [];
+    let currentStep = 0;
+
+    function updateTabUI(mode) {
+      ['pipeline', 'single1', 'single-1'].forEach(t => {
+        const el = document.getElementById(`tab-${t}`);
+        if (!el) return;
+        if (t === mode) {
+          el.className = 'mode-tab px-3.5 py-2 rounded-xl text-xs sm:text-sm font-extrabold bg-white text-slate-900 shadow transition flex items-center gap-1.5';
+        } else {
+          el.className = 'mode-tab px-3.5 py-2 rounded-xl text-xs sm:text-sm font-extrabold text-slate-200 bg-slate-700/70 hover:bg-slate-700 border border-slate-600 transition flex items-center gap-1.5';
+        }
+      });
+    }
+
+    function loadMode(mode, shouldSpeak = true) {
+      stopAutoPlay();
+      stopSpeech();
+      currentMode = mode;
+      updateTabUI(mode);
+      steps = buildModeSteps(mode);
+      currentStep = 0;
+      renderStep(shouldSpeak);
+    }
+
+    function applyCustomPipeline() {
+      stopAutoPlay();
+      stopSpeech();
+      const initRes = document.getElementById('in-init-res').value;
+      const rawCmd = document.getElementById('in-raw-cmd').value;
+      if (!rawCmd.trim()) return;
+
+      updateTabUI(null);
+      const initMem = createResultMemFromStr(initRes);
+      steps = generateTwoStageSteps(rawCmd, initMem, '').steps;
+      currentStep = 0;
+      renderStep(true);
+    }
+
+    function resetCurrent() {
+      stopAutoPlay();
+      stopSpeech();
+      currentStep = 0;
+      renderStep(false);
+    }
+
+    function getVisibleResultStr(mem) {
+      let out = '';
+      for (let i = 0; i < mem.length; i++) {
+        if (mem[i] === '\0' || mem[i] === null) break;
+        out += mem[i];
+      }
+      return out;
+    }
+
+    function formatCell(ch) {
+      if (ch === null) return { html: `<span class="text-slate-300 font-bold text-base">·</span>`, cellCls: 'border-slate-200 bg-slate-50/70' };
+      if (ch === '\0') return { html: `<span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-black text-xs border border-rose-300">\\0</span>`, cellCls: 'border-rose-300 bg-rose-50/50' };
+      if (ch === ' ')  return { html: `<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold text-xs border border-amber-300">␣</span>`, cellCls: 'border-amber-300 bg-amber-50/40' };
+      if (ch === '"')  return { html: `<span class="text-rose-600 font-black text-base sm:text-lg">"</span>`, cellCls: 'border-rose-300 bg-rose-50/30' };
+      return { html: `<span class="text-slate-900 font-black text-base sm:text-lg">${ch}</span>`, cellCls: 'border-slate-300 bg-white' };
+    }
+
+    function renderStep(shouldSpeak = true) {
+      if (!steps.length) return;
+      const s = steps[currentStep];
+
+      // 進度與按鈕
+      document.getElementById('step-counter').textContent = `${currentStep + 1} / ${steps.length}`;
+      const pct = steps.length > 1 ? (currentStep / (steps.length - 1)) * 100 : 100;
+      document.getElementById('progress-bar').style.width = `${pct}%`;
+      document.getElementById('btn-prev').disabled = currentStep === 0;
+      document.getElementById('btn-next').disabled = currentStep === steps.length - 1;
+
+      // 階段指示膠囊與緩衝區外框高亮
+      const pill1 = document.getElementById('stage-pill-1');
+      const pill2 = document.getElementById('stage-pill-2');
+      const lineSec = document.getElementById('line-section');
+      const resSec = document.getElementById('result-section');
+
+      if (s.stage === 1) {
+        pill1.className = 'px-2.5 py-0.5 rounded-full font-extrabold bg-amber-500 text-slate-950 shadow-2xs transition';
+        pill2.className = 'px-2.5 py-0.5 rounded-full font-bold bg-slate-300 text-slate-600 transition';
+        lineSec.className = 'rounded-2xl p-3.5 border-2 border-amber-400 bg-amber-50/30 shadow-xs transition-all';
+        resSec.className = 'rounded-2xl p-3.5 border-2 border-slate-200 bg-slate-50/40 transition-all';
+      } else {
+        pill1.className = 'px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 transition';
+        pill2.className = 'px-2.5 py-0.5 rounded-full font-extrabold bg-indigo-600 text-white shadow-2xs transition';
+        lineSec.className = 'rounded-2xl p-3.5 border-2 border-slate-200 bg-slate-50/40 transition-all';
+        resSec.className = 'rounded-2xl p-3.5 border-2 border-indigo-400 bg-indigo-50/20 shadow-xs transition-all';
+      }
+
+      // 卡片文字
+      const accentMap = {
+        amber: 'bg-amber-500',
+        rose: 'bg-rose-600',
+        emerald: 'bg-emerald-600',
+        sky: 'bg-sky-600',
+        purple: 'bg-purple-600'
+      };
+      document.getElementById('card-accent').className = `absolute left-0 top-0 bottom-0 w-2 ${accentMap[s.accent] || 'bg-indigo-600'}`;
+      document.getElementById('step-badge').textContent = s.badge;
+      document.getElementById('step-title').textContent = s.title;
+      document.getElementById('cmd-pill').textContent = `輸入：${s.cmd}`;
+      document.getElementById('step-desc').textContent = s.desc;
+      document.getElementById('step-tip').textContent = s.tip;
+      document.getElementById('bridge-badge').textContent = s.bridgeText;
+
+      // 1. 渲染 line[] 格子
+      const lineGrid = document.getElementById('line-grid');
+      const lPtrs = s.linePtrs || {};
+      lineGrid.innerHTML = s.lineMem.map((ch, idx) => {
+        const fmt = formatCell(ch);
+        const addr = `0x10${idx.toString(16).toUpperCase().padStart(2, '0')}`;
+        let cellStyle = fmt.cellCls;
+
+        if (s.lineRange && idx >= s.lineRange.start && idx <= s.lineRange.end) {
+          cellStyle = s.lineRange.color === 'emerald'
+            ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-300'
+            : 'border-amber-500 bg-amber-100/80 ring-2 ring-amber-300';
+        }
+        if (s.lineHighlight && s.lineHighlight.idx === idx) {
+          cellStyle = s.lineHighlight.type === 'null'
+            ? 'anim-null border-rose-600 bg-rose-100 ring-4 ring-rose-300'
+            : 'anim-scan border-amber-500 bg-amber-50 ring-4 ring-amber-300';
+        }
+
+        let badges = [];
+        if (lPtrs.lineStart === idx) badges.push(`<span class="px-1.5 py-0.5 rounded bg-slate-800 text-white text-[10px] font-mono-code font-bold shadow whitespace-nowrap">line</span>`);
+        if (lPtrs.atoiStop === idx)  badges.push(`<span class="px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 text-[10px] font-mono-code font-extrabold shadow whitespace-nowrap">atoi停止</span>`);
+        if (lPtrs.first === idx)     badges.push(`<span class="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[10px] font-mono-code font-bold shadow whitespace-nowrap">first_quote</span>`);
+        if (lPtrs.source === idx)    badges.push(`<span class="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-mono-code font-extrabold shadow whitespace-nowrap">source</span>`);
+        if (lPtrs.last === idx)      badges.push(`<span class="px-1.5 py-0.5 rounded bg-orange-600 text-white text-[10px] font-mono-code font-bold shadow whitespace-nowrap">last_quote</span>`);
+
+        const topOverlay = badges.length > 0
+          ? `<div class="absolute -top-12 flex flex-col items-center gap-0.5 z-10">${badges.join('')}<span class="text-slate-700 text-[10px] leading-none font-black">▼</span></div>`
+          : '';
+
+        return `
+          <div class="relative flex flex-col items-center">
+            ${topOverlay}
+            <div class="mem-cell w-10 h-12 sm:w-11 sm:h-13 rounded-xl border-2 ${cellStyle} flex items-center justify-center shadow-2xs">
+              ${fmt.html}
+            </div>
+            <span class="text-[10px] font-mono-code text-slate-700 font-bold mt-1">[${idx}]</span>
+            <span class="text-[9px] font-mono-code text-slate-400">${addr}</span>
+          </div>
+        `;
+      }).join('');
+
+      // 2. 渲染 result[] 格子
+      const resGrid = document.getElementById('result-grid');
+      const rPtrs = s.resPtrs || {};
+      let virtualLeftHtml = '';
+      if (rPtrs.tailDestLeftOfStart) {
+        virtualLeftHtml = `
+          <div class="relative flex flex-col items-center mr-1 opacity-85">
+            <div class="absolute -top-12 flex flex-col items-center gap-0.5 z-10">
+              <span class="px-1.5 py-0.5 rounded bg-purple-600 text-white text-[10px] font-mono-code font-bold shadow whitespace-nowrap">tailDest</span>
+              <span class="text-purple-700 text-[10px] leading-none font-black">▼</span>
+            </div>
+            <div class="w-10 h-12 sm:w-11 sm:h-13 rounded-xl border-2 border-dashed border-purple-400 bg-purple-50/60 flex items-center justify-center">
+              <span class="text-[9px] font-mono-code text-purple-700 font-bold text-center leading-tight">越界<br>停止</span>
+            </div>
+            <span class="text-[10px] font-mono-code text-purple-700 font-bold mt-1">[-1]</span>
+            <span class="text-[9px] font-mono-code text-purple-500">0x1FFF</span>
+          </div>
+        `;
+      }
+
+      const resCellsHtml = s.resMem.map((ch, idx) => {
+        const fmt = formatCell(ch);
+        const addr = `0x20${idx.toString(16).toUpperCase().padStart(2, '0')}`;
+        let cellStyle = fmt.cellCls;
+
+        if (typeof s.vacatedMaxIdx === 'number' && idx <= s.vacatedMaxIdx && (!s.resHighlight || s.resHighlight.idx !== idx)) {
+          cellStyle = 'border-purple-300 border-dashed bg-purple-50/40';
+        }
+        if (s.resHighlight) {
+          if (s.resHighlight.idx === idx) {
+            if (s.resHighlight.type === 'scan')  cellStyle = 'anim-scan border-amber-500 bg-amber-50 ring-4 ring-amber-300';
+            if (s.resHighlight.type === 'shift') cellStyle = 'anim-shift border-purple-600 bg-purple-50 ring-4 ring-purple-300';
+            if (s.resHighlight.type === 'null')  cellStyle = 'anim-null border-rose-600 bg-rose-100 ring-4 ring-rose-300';
+            if (s.resHighlight.type === 'jump')  cellStyle = 'anim-jump border-sky-500 bg-sky-50 ring-4 ring-sky-300';
+          } else if (s.resHighlight.fromIdx === idx) {
+            cellStyle = 'border-purple-400 border-dashed bg-purple-100/50';
+          }
+        }
+
+        let badges = [];
+        if (rPtrs.dest === idx)       badges.push(`<span class="px-1.5 py-0.5 rounded bg-slate-800 text-white text-[10px] font-mono-code font-bold shadow whitespace-nowrap">dest</span>`);
+        if (rPtrs.p === idx)          badges.push(`<span class="px-1.5 py-0.5 rounded bg-sky-600 text-white text-[10px] font-mono-code font-bold shadow whitespace-nowrap">p</span>`);
+        if (rPtrs.tailDest === idx)   badges.push(`<span class="px-1.5 py-0.5 rounded bg-purple-600 text-white text-[10px] font-mono-code font-bold shadow whitespace-nowrap">tailDest</span>`);
+        if (rPtrs.tailResult === idx) badges.push(`<span class="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-mono-code font-bold shadow whitespace-nowrap">tailResult</span>`);
+
+        const topOverlay = badges.length > 0
+          ? `<div class="absolute -top-12 flex flex-col items-center gap-0.5 z-10">${badges.join('')}<span class="text-slate-700 text-[10px] leading-none font-black">▼</span></div>`
+          : '';
+
+        return `
+          <div class="relative flex flex-col items-center">
+            ${topOverlay}
+            <div class="mem-cell w-10 h-12 sm:w-11 sm:h-13 rounded-xl border-2 ${cellStyle} flex items-center justify-center shadow-2xs">
+              ${fmt.html}
+            </div>
+            <span class="text-[10px] font-mono-code text-slate-700 font-bold mt-1">[${idx}]</span>
+            <span class="text-[9px] font-mono-code text-slate-400">${addr}</span>
+          </div>
+        `;
+      }).join('');
+
+      resGrid.innerHTML = virtualLeftHtml + resCellsHtml;
+
+      // 3. 更新 result 字串預覽與 Watch Window
+      document.getElementById('result-preview').textContent = `"${getVisibleResultStr(s.resMem)}"`;
+
+      const watchGrid = document.getElementById('watch-grid');
+      watchGrid.innerHTML = Object.entries(s.watch || {}).map(([k, v]) => `
+        <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 flex flex-col">
+          <span class="text-[10px] text-slate-500 font-semibold">${k}</span>
+          <span class="font-extrabold text-indigo-700 truncate mt-0.5" title="${v}">${v}</span>
+        </div>
+      `).join('');
+
+      // 4. 程式碼行同步高亮
+      FULL_CPP_LINES.forEach(item => {
+        const el = document.getElementById(`cpp-ln-${item.ln}`);
+        if (!el) return;
+        if (s.codeLines.includes(item.ln)) {
+          el.className = 'flex items-start px-2 py-0.5 rounded-lg bg-amber-400/20 border-l-4 border-amber-400 text-amber-200 font-bold transition-colors duration-150';
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+          el.className = 'flex items-start px-2 py-0.5 rounded-lg text-slate-300 hover:bg-slate-800/60 transition-colors duration-150';
+        }
+      });
+
+      // 5. 語音朗讀
+      if (shouldSpeak) {
+        speakText(s.voice, () => {
+          if (isAutoPlaying) {
+            if (currentStep < steps.length - 1) {
+              currentStep++;
+              renderStep(true);
+            } else {
+              stopAutoPlay();
+            }
+          }
+        });
+      }
+    }
+
+    function nextStep() {
+      stopAutoPlay();
+      if (currentStep < steps.length - 1) {
+        currentStep++;
+        renderStep(true);
+      }
+    }
+
+    function prevStep() {
+      stopAutoPlay();
+      if (currentStep > 0) {
+        currentStep--;
+        renderStep(true);
+      }
+    }
+
+    function replayVoice() {
+      if (steps[currentStep]) {
+        speakText(steps[currentStep].voice, isAutoPlaying ? () => {
+          if (currentStep < steps.length - 1) {
+            currentStep++;
+            renderStep(true);
+          } else {
+            stopAutoPlay();
+          }
+        } : null);
+      }
+    }
+
+    function startAutoPlay() {
+      isAutoPlaying = true;
+      document.getElementById('auto-icon').textContent = '⏸';
+      document.getElementById('auto-text').textContent = '暫停連續播放';
+      document.getElementById('btn-auto').classList.replace('bg-indigo-600', 'bg-amber-600');
+      document.getElementById('btn-auto').classList.replace('hover:bg-indigo-500', 'hover:bg-amber-500');
+
+      if (currentStep >= steps.length - 1) {
+        currentStep = 0;
+      }
+      renderStep(true);
+    }
+
+    function stopAutoPlay() {
+      isAutoPlaying = false;
+      document.getElementById('auto-icon').textContent = '▶';
+      document.getElementById('auto-text').textContent = '自動連續播放';
+      document.getElementById('btn-auto').classList.replace('bg-amber-600', 'bg-indigo-600');
+      document.getElementById('btn-auto').classList.replace('hover:bg-amber-500', 'hover:bg-indigo-500');
+    }
+
+    function toggleAutoPlay() {
+      if (isAutoPlaying) {
+        stopAutoPlay();
+        stopSpeech();
+      } else {
+        startAutoPlay();
+      }
+    }
+
+    // =========================================================================
+    // 5. 防選取、防複製與快捷鍵保護
+    // =========================================================================
+    let toastTimer = null;
+    function showCopyLockToast() {
+      const toast = document.getElementById('copy-lock-toast');
+      if (!toast) return;
+      toast.classList.remove('opacity-0', 'translate-y-2');
+      toast.classList.add('opacity-100', 'translate-y-0');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', 'translate-y-2');
+      }, 2000);
+    }
+
+    function setupAntiCopyProtection() {
+      const isEditable = (target) => target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+
+      document.addEventListener('contextmenu', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+          showCopyLockToast();
+        }
+      });
+
+      document.addEventListener('selectstart', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+        }
+      });
+
+      document.addEventListener('copy', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+          showCopyLockToast();
+        }
+      });
+
+      document.addEventListener('cut', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+          showCopyLockToast();
+        }
+      });
+
+      document.addEventListener('dragstart', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+        }
+      });
+    }
+
+    window.addEventListener('keydown', (e) => {
+      const isInputFocused = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+
+      if (!isInputFocused && (e.ctrlKey || e.metaKey)) {
+        const key = e.key.toLowerCase();
+        if (['c', 'a', 'x', 's', 'u'].includes(key)) {
+          e.preventDefault();
+          showCopyLockToast();
+          return;
+        }
+      }
+
+      if (isInputFocused || (document.activeElement && document.activeElement.tagName === 'SELECT')) return;
+      if (e.key === 'ArrowRight') nextStep();
+      if (e.key === 'ArrowLeft') prevStep();
+      if (e.key === ' ') {
+        e.preventDefault();
+        toggleAutoPlay();
+      }
+    });
+
+    window.onload = function () {
+      setupAntiCopyProtection();
+      renderCodePanel();
+      loadMode('pipeline', false);
+    };
+  </script>
+</body>
+</html>
