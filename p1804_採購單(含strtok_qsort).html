@@ -1,0 +1,1772 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P1804 採購單 — 全程式解題與 strtok / qsort 深度動畫整合版</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Google Fonts: Noto Sans TC 與 JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    animation: {
+                        'flow': 'dashFlow 1.2s linear infinite',
+                        'null-pop': 'nullPop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                        'pop': 'popIn 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
+                    },
+                    keyframes: {
+                        dashFlow: {
+                            '0%': { strokeDashoffset: '24' },
+                            '100%': { strokeDashoffset: '0' },
+                        },
+                        nullPop: {
+                            '0%': { transform: 'scale(0.65) rotate(-8deg)', opacity: '0.4' },
+                            '60%': { transform: 'scale(1.18) rotate(3deg)' },
+                            '100%': { transform: 'scale(1) rotate(0deg)', opacity: '1' },
+                        },
+                        popIn: {
+                            '0%': { opacity: '0', transform: 'translateY(8px) scale(0.96)' },
+                            '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+                        },
+                        waveBar: {
+                            '0%, 100%': { transform: 'scaleY(0.35)' },
+                            '50%': { transform: 'scaleY(1)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        .memory-card, .mem-cell {
+            transition: all 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .glow-blue { box-shadow: 0 0 18px rgba(59, 130, 246, 0.45); }
+        .glow-teal { box-shadow: 0 0 18px rgba(20, 184, 166, 0.45); }
+        .glow-amber { box-shadow: 0 0 20px rgba(245, 158, 11, 0.5); }
+        .glow-rose { box-shadow: 0 0 20px rgba(244, 63, 94, 0.55); }
+        .glow-purple { box-shadow: 0 0 20px rgba(168, 85, 247, 0.5); }
+        .glow-emerald { box-shadow: 0 0 18px rgba(16, 185, 129, 0.45); }
+
+        .code-line {
+            transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+        }
+        /* 聲波跳動動畫 */
+        .voice-wave span {
+            display: inline-block;
+            width: 3px;
+            height: 14px;
+            border-radius: 9999px;
+            background-color: currentColor;
+            animation: waveBar 0.85s ease-in-out infinite;
+        }
+        .voice-wave span:nth-child(2) { animation-delay: 0.15s; }
+        .voice-wave span:nth-child(3) { animation-delay: 0.3s; }
+        .voice-wave span:nth-child(4) { animation-delay: 0.45s; }
+        .voice-wave.paused span {
+            animation: none;
+            transform: scaleY(0.4);
+        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.35); border-radius: 9999px; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col selection:bg-blue-500 selection:text-white">
+
+    <!-- 頂部導覽列：三大教學模組一鍵切換 + 語音開關 -->
+    <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur-md sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+            <!-- 品牌標題 -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 via-teal-500 to-emerald-500 flex items-center justify-center text-white font-mono font-extrabold text-sm shadow-md">
+                    P1804
+                </div>
+                <div>
+                    <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">
+                        P1804 採購單 — 全程式解題與底層函式視覺化
+                    </h1>
+                    <p class="text-[11px] sm:text-xs text-slate-400">
+                        統一 <code class="font-mono text-emerald-400">cin.getline + atoi</code> ｜ <code class="font-mono text-teal-400">strtok</code> 原地切字 ｜ <code class="font-mono text-blue-400">qsort</code> 雙重指標與動態箭頭
+                    </p>
+                </div>
+            </div>
+
+            <!-- 三大模組切換分頁標籤 -->
+            <nav class="flex flex-wrap items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800" aria-label="教學模組切換">
+                <button id="tab-full" class="mode-tab px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition-all bg-blue-600 text-white shadow-sm cursor-pointer">
+                    1. 全程式解題流程 (8階段)
+                </button>
+                <button id="tab-strtok" class="mode-tab px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer">
+                    2. strtok 原地切字動畫 (6步)
+                </button>
+                <button id="tab-qsort" class="mode-tab px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer">
+                    3. qsort 雙重指標動畫 (6步)
+                </button>
+            </nav>
+
+            <!-- 右側語音狀態開關 -->
+            <div class="flex items-center gap-2">
+                <button id="btnVoiceToggle" class="px-3 py-1.5 rounded-xl border border-emerald-800 bg-emerald-950/70 text-emerald-300 hover:bg-emerald-900/70 transition text-xs font-semibold flex items-center gap-2 cursor-pointer" title="開啟或關閉語音導覽">
+                    <span id="voiceIcon">🔊</span>
+                    <span id="voiceLabel">語音已開啟</span>
+                    <span id="voiceWave" class="voice-wave paused flex items-center gap-0.5 text-emerald-400 ml-0.5" aria-hidden="true">
+                        <span></span><span></span><span></span><span></span>
+                    </span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主內容區 -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-4 flex flex-col gap-4">
+
+        <!-- 步驟進度列與播放/語音控制面板 -->
+        <section class="bg-slate-900 rounded-2xl border border-slate-800 p-3.5 sm:p-4 shadow-sm flex flex-col gap-3">
+            <div class="flex flex-col lg:flex-row items-center justify-between gap-3">
+                <!-- 動態步驟膠囊按鈕列 -->
+                <div id="stepPills" class="flex flex-wrap items-center justify-center lg:justify-start gap-1.5 w-full lg:w-auto">
+                    <!-- JS 動態生成 -->
+                </div>
+
+                <!-- 播放控制按鈕群 -->
+                <div class="flex flex-wrap items-center justify-center gap-2 shrink-0">
+                    <button id="btnPrev" class="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-xs sm:text-sm font-medium transition flex items-center gap-1 cursor-pointer">
+                        <span>◀</span> 上一步
+                    </button>
+                    <button id="btnAutoPlay" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-semibold shadow-sm transition flex items-center gap-1.5 min-w-[132px] justify-center cursor-pointer">
+                        <span id="autoPlayIcon">▶</span> <span id="autoPlayText">語音自動播放</span>
+                    </button>
+                    <button id="btnNext" class="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-xs sm:text-sm font-medium transition flex items-center gap-1 cursor-pointer">
+                        下一步 <span>▶</span>
+                    </button>
+                    <button id="btnReset" class="px-2.5 py-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs sm:text-sm font-medium transition cursor-pointer" title="重設至本模組第 0 步">
+                        ↺
+                    </button>
+                </div>
+            </div>
+
+            <!-- 語音導覽控制工具列與即時字幕 -->
+            <div class="pt-2.5 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+                <div class="flex flex-wrap items-center gap-2">
+                    <button id="btnReplayVoice" class="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-500 text-white font-semibold transition flex items-center gap-1 shadow-sm cursor-pointer">
+                        <span>🔁</span> 重聽本段語音 (R)
+                    </button>
+
+                    <div class="flex items-center gap-1.5 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700">
+                        <label for="rateSelect" class="text-slate-400">語速：</label>
+                        <select id="rateSelect" class="bg-transparent font-mono font-bold text-slate-100 focus:outline-none cursor-pointer">
+                            <option value="0.85" class="bg-slate-800">0.85x</option>
+                            <option value="1.0" selected class="bg-slate-800">1.0x</option>
+                            <option value="1.2" class="bg-slate-800">1.2x</option>
+                            <option value="1.45" class="bg-slate-800">1.45x</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center gap-1.5 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700 max-w-[210px] sm:max-w-[260px]">
+                        <label for="voiceSelect" class="text-slate-400 shrink-0">語音：</label>
+                        <select id="voiceSelect" class="bg-transparent font-medium text-slate-100 focus:outline-none truncate cursor-pointer">
+                            <option value="">載入系統語音中...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 即時語音字幕提詞機 -->
+                <div class="flex-1 min-w-[260px] flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-950/90 border border-slate-800">
+                    <span id="ttsStatusBadge" class="shrink-0 px-2 py-0.5 rounded text-[11px] font-bold bg-slate-800 text-slate-300">
+                        語音就緒
+                    </span>
+                    <p id="teleprompterText" class="text-slate-200 truncate" title="語音講解字幕">
+                        點擊「語音自動播放」或任意步驟，即可聆聽完整中文解說。
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 主視覺舞台：左側完整 C++ 程式碼 (5欄) + 右側動態視覺化與詳解 (7欄) -->
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+
+            <!-- 左側 5 欄：完整 32 行統一輸入版 C++ 程式碼面板 -->
+            <div class="lg:col-span-5 bg-slate-900 rounded-2xl border border-slate-800 p-4 shadow-sm flex flex-col justify-between lg:sticky lg:top-[76px]">
+                <div>
+                    <div class="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-800">
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                            <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                            <span class="ml-1.5 text-xs font-mono text-slate-300 font-semibold">P1804-採購單.cpp</span>
+                        </div>
+                        <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-800 text-emerald-300">
+                            統一 getline + atoi 版
+                        </span>
+                    </div>
+
+                    <div id="codeContainer" class="font-mono text-[11.5px] sm:text-xs leading-[1.6] overflow-x-auto max-h-[540px] overflow-y-auto pr-1 space-y-0.5">
+                        <!-- JS 動態生成 32 行程式碼 -->
+                    </div>
+                </div>
+
+                <!-- 底部小提示 -->
+                <div class="mt-3 pt-2.5 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+                    <span>💡 點擊上方分頁可深入觀察 <code class="text-teal-400">strtok</code> 與 <code class="text-blue-400">qsort</code> 箭頭</span>
+                    <span id="activeLinesBadge" class="font-mono text-blue-400">第 1-32 行</span>
+                </div>
+            </div>
+
+            <!-- 右側 7 欄：動態視覺化舞台 + 步驟深度解說 -->
+            <div class="lg:col-span-7 flex flex-col gap-4">
+
+                <!-- 動態視覺化舞台卡片 -->
+                <div class="bg-slate-900 rounded-2xl border border-slate-800 p-4 sm:p-5 shadow-sm overflow-hidden">
+                    <!-- 舞台頂部狀態列與返回全題按鈕 -->
+                    <div class="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-800">
+                        <div class="flex items-center gap-2">
+                            <span id="stageDot" class="inline-block w-2.5 h-2.5 rounded-full bg-blue-500 animate-ping"></span>
+                            <span id="stageSubtitle" class="text-xs font-bold uppercase tracking-wider text-blue-400">
+                                STAGE 0 • 題目理解與三部曲架構
+                            </span>
+                        </div>
+                        <div id="stageActionSlot" class="flex items-center gap-2">
+                            <!-- 動態放置「深入檢視 strtok/qsort 動畫」或「返回全程式流程」快捷按鈕 -->
+                        </div>
+                    </div>
+
+                    <!-- 動態動畫內容區 -->
+                    <div id="visualCanvas" class="relative min-h-[340px] flex flex-col justify-center">
+                        <!-- 由 JS 動態渲染 -->
+                    </div>
+                </div>
+
+                <!-- 步驟文字深度解說卡片 -->
+                <div class="bg-slate-900 rounded-2xl border border-slate-800 p-4 sm:p-5 shadow-sm">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                        <div class="flex items-center gap-2">
+                            <span id="explainBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-600 text-white">
+                                階段 0 / 7
+                            </span>
+                            <h2 id="explainTitle" class="text-base sm:text-lg font-bold text-white">
+                                題目目標與三部曲解題策略
+                            </h2>
+                        </div>
+                        <span id="autoPlayIndicator" class="text-xs font-semibold text-emerald-400 hidden animate-pulse">
+                            🔊 語音同步自動播放中...
+                        </span>
+                    </div>
+
+                    <div id="explainBody" class="space-y-2.5 text-sm leading-relaxed text-slate-300">
+                        <!-- JS 動態填入 -->
+                    </div>
+
+                    <div class="mt-4 pt-2.5 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+                        <span>快捷鍵：<kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono">←</kbd> <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono">→</kbd> 切換 ｜ <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono">Space</kbd> 自動播放 ｜ <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono">R</kbd> 重聽語音</span>
+                        <span class="font-mono text-slate-500">時間複雜度：O(N log N · L)</span>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // ==========================================
+        // 完整 C++ 程式碼 (統一 getline + atoi 版，共 32 行)
+        // ==========================================
+        const CPP_LINES = [
+            { num: 1,  code: '<span class="text-slate-500">// P1804-採購單 (統一輸入版)</span>' },
+            { num: 2,  code: '<span class="text-purple-400">#include</span> <span class="text-emerald-400">&lt;iostream&gt;</span>' },
+            { num: 3,  code: '<span class="text-purple-400">#include</span> <span class="text-emerald-400">&lt;cstdlib&gt;</span>' },
+            { num: 4,  code: '<span class="text-purple-400">#include</span> <span class="text-emerald-400">&lt;cstring&gt;</span>' },
+            { num: 5,  code: '<span class="text-purple-400">using namespace</span> std;' },
+            { num: 6,  code: '' },
+            { num: 7,  code: '<span class="text-teal-400">char</span> line[<span class="text-amber-300">21</span>*<span class="text-amber-300">1000</span>];' },
+            { num: 8,  code: '<span class="text-teal-400">char</span> *item[<span class="text-amber-300">1000</span>];' },
+            { num: 9,  code: '' },
+            { num: 10, code: '<span class="text-purple-400">int</span> <span class="text-blue-400 font-bold">cmpfunc</span>(<span class="text-purple-400">const void*</span> a, <span class="text-purple-400">const void*</span> b) {' },
+            { num: 11, code: '    <span class="text-teal-400">char</span> *aa = <span class="text-amber-400 font-bold">*(char**)</span> a;' },
+            { num: 12, code: '    <span class="text-teal-400">char</span> *bb = <span class="text-amber-400 font-bold">*(char**)</span> b;' },
+            { num: 13, code: '    <span class="text-purple-400">return</span> <span class="text-blue-400 font-bold">strcmp</span>(aa, bb);' },
+            { num: 14, code: '}' },
+            { num: 15, code: '' },
+            { num: 16, code: '<span class="text-purple-400">int</span> <span class="text-blue-400 font-bold">main</span>() {' },
+            { num: 17, code: '    <span class="text-purple-400">int</span> t, n;' },
+            { num: 18, code: '    cin.<span class="text-blue-400 font-bold">getline</span>(line, <span class="text-purple-400">sizeof</span>(line));' },
+            { num: 19, code: '    t = <span class="text-blue-400 font-bold">atoi</span>(line);' },
+            { num: 20, code: '    <span class="text-purple-400">while</span> (t--) {' },
+            { num: 21, code: '        cin.<span class="text-blue-400 font-bold">getline</span>(line, <span class="text-purple-400">sizeof</span>(line));' },
+            { num: 22, code: '        <span class="text-teal-400">char</span>* token = <span class="text-blue-400 font-bold">strtok</span>(line, <span class="text-emerald-400">" "</span>);' },
+            { num: 23, code: '        <span class="text-purple-400">for</span> (n = <span class="text-amber-300">0</span>; token; n++) {' },
+            { num: 24, code: '            item[n] = token;' },
+            { num: 25, code: '            token = <span class="text-blue-400 font-bold">strtok</span>(<span class="text-amber-400 font-bold">NULL</span>, <span class="text-emerald-400">" "</span>);' },
+            { num: 26, code: '        }' },
+            { num: 27, code: '        <span class="text-blue-400 font-bold">qsort</span>(item, n, <span class="text-purple-400">sizeof</span>(<span class="text-teal-400">char*</span>), cmpfunc);' },
+            { num: 28, code: '        cout &lt;&lt; item[<span class="text-amber-300">0</span>];' },
+            { num: 29, code: '        <span class="text-purple-400">for</span> (<span class="text-purple-400">int</span> i = <span class="text-amber-300">1</span>; i &lt; n; i++) {' },
+            { num: 30, code: '            <span class="text-purple-400">if</span> (<span class="text-blue-400 font-bold">strcmp</span>(item[i], item[i-<span class="text-amber-300">1</span>]) == <span class="text-amber-300">0</span>) <span class="text-purple-400">continue</span>;' },
+            { num: 31, code: '            cout &lt;&lt; <span class="text-emerald-400">" "</span> &lt;&lt; item[i];' },
+            { num: 32, code: '        } cout &lt;&lt; endl; } <span class="text-purple-400">return</span> <span class="text-amber-300">0</span>; }' }
+        ];
+
+        // ==========================================
+        // 模組 1 資料：全程式解題流程 (8 個完整階段)
+        // ==========================================
+        const FULL_STEPS = [
+            {
+                pillTitle: "0. 題目策略",
+                subtitle: "STAGE 0 • 題目理解與三部曲解題策略",
+                title: "P1804 採購單：去除重複並依字典序輸出",
+                highlightLines: [7, 8],
+                voiceScript: "歡迎來到 P1804 採購單全程式解題教學。題目要求我們將每一行重複的採購品項剔除，並依照英文的字典順序印出。我們採用三個核心步驟：第一，用 strtok 原地切出每個單字；第二，用 qsort 搭配指標陣列進行字典序排序，讓相同單字靠在一起；第三，透過相鄰比對略過重複的項目。",
+                body: `
+                    <p>目標：將每筆測資中重複的採購項目剔除，並以<strong>字典序（A → Z）</strong>輸出一行。</p>
+                    <p>透過宣告全域的 <code class="font-mono text-teal-400">char line[21*1000]</code> 與指標陣列 <code class="font-mono text-teal-400">char *item[1000]</code>，整個解題流程分為「切字 → 排序 → 相鄰去重」三部曲。</p>
+                `
+            },
+            {
+                pillTitle: "1. 統一讀入 t",
+                subtitle: "STAGE 1 • cin.getline + atoi 統一讀取（免用 ignore）",
+                title: "統一用 cin.getline + atoi 讀取第一行，徹底消除緩衝區換行殘留",
+                highlightLines: [18, 19],
+                voiceScript: "第一階段，統一讀取測資筆數。為了避免混用 cin 箭頭與 getline 造成換行符號殘留，我們在第十八與十九行，直接用 cin.getline 整行抽走第一行的字串 2，並自動丟棄換行符號，接著呼叫 atoi 轉成整數二。這樣緩衝區就完全乾淨，不需要再寫 ignore 了。",
+                body: `
+                    <p>若混用 <code class="font-mono">cin &gt;&gt; t</code> 與 <code class="font-mono">cin.getline()</code>，緩衝區會殘留 <code class="font-mono text-rose-400">'\\n'</code>。</p>
+                    <p>本版程式統一使用 <code class="font-mono text-emerald-400 font-bold">cin.getline(line, sizeof(line));</code> 整行讀入第一行並自動丟棄換行字元，再用 <code class="font-mono text-blue-400 font-bold">t = atoi(line);</code> 轉為整數，乾淨俐落！</p>
+                `
+            },
+            {
+                pillTitle: "2. 讀入採購單",
+                subtitle: "STAGE 2 • while(t--) 讀取第 1 筆完整採購清單",
+                title: "進入 while(t--) 迴圈，整行讀入第一筆採購品項",
+                highlightLines: [20, 21],
+                voiceScript: "第二階段，進入 while 迴圈處理第一筆測資。第二十一行呼叫 cin.getline，把整行採購清單讀進全域字元陣列 line 裡面，並在最後自動補上字串結束符號斜線零。此時單字之間都還是空白鍵。",
+                body: `
+                    <p>在 <code class="font-mono text-purple-400">while (t--)</code> 第 1 輪中，<code class="font-mono text-teal-400">cin.getline(line, sizeof(line))</code> 將整行文字讀入 <code class="font-mono">line[]</code>，並在結尾補上 <code class="font-mono text-rose-400">'\\0'</code>。</p>
+                `
+            },
+            {
+                pillTitle: "3. strtok 切字",
+                subtitle: "STAGE 3 • strtok 原地改寫 '\\0' 並記錄指標陣列",
+                title: "使用 strtok 切出 7 個單字，記錄於 item[0..6]（n = 7）",
+                highlightLines: [22, 23, 24, 25, 26],
+                quickLink: { mode: 'strtok', label: '🔍 觀看 strtok 逐字元原地切字動畫' },
+                voiceScript: "第三階段，strtok 切分單字。第二十二到二十六行透過迴圈呼叫 strtok，每遇到一個空白鍵，就直接把空白就地改寫成斜線零，並把單字的開頭位址存進指標陣列 item 裡。第一筆測資總共切出 n 等於七個項目。",
+                body: `
+                    <p><code class="font-mono text-teal-400 font-bold">strtok</code> 不會複製字串，而是直接在 <code class="font-mono">line[]</code> 中將每個空白改寫為 <code class="font-mono text-rose-400">'\\0'</code>，再把各單字起始位址存入 <code class="font-mono">item[0..6]</code>（計數器 <code class="font-mono text-amber-300 font-bold">n = 7</code>）。</p>
+                `
+            },
+            {
+                pillTitle: "4. qsort 排序原理",
+                subtitle: "STAGE 4 • qsort 搭配 cmpfunc 雙重指標轉型與取值",
+                title: "呼叫 qsort(item, n, sizeof(char*), cmpfunc) 排序指標",
+                highlightLines: [10, 11, 12, 13, 14, 27],
+                quickLink: { mode: 'qsort', label: '🔍 觀看 qsort 四參數與雙重指標箭頭動畫' },
+                voiceScript: "第四階段，呼叫 qsort 進行字典序排序。qsort 傳入四個參數，其中比較函式 cmpfunc 規定接收兩個 const void 星號指標，代表 item 陣列格子的地址。我們必須先轉型成雙重指標 char 兩顆星，再加星號取值，才能拿出真正的字串開頭交給 strcmp 比大小。",
+                body: `
+                    <p>第 27 行呼叫 <code class="font-mono text-blue-400 font-bold">qsort(item, n, sizeof(char*), cmpfunc);</code>：</p>
+                    <p><code class="font-mono">cmpfunc</code> 收到格子位址後，透過 <code class="font-mono text-amber-300 font-bold">*(char**) a</code> 轉型並取出字串起點，交給 <code class="font-mono">strcmp(aa, bb)</code> 比較字典序，且排序過程只交換指標位址、不搬動原始字元。</p>
+                `
+            },
+            {
+                pillTitle: "5. 排序完成狀態",
+                subtitle: "STAGE 5 • 相同品項在 item[] 中全部相鄰靠攏",
+                title: "排序完成：相同的單字全部集中在一起！",
+                highlightLines: [27],
+                voiceScript: "第五階段，排序完成。經過 qsort 快速排序後，原本散落在各處的相同單字，例如兩個 biscuit、兩個 juice 和兩個 orange，現在在指標陣列 item 裡面全都緊緊相鄰靠在一起了，這讓我們接下來去除重複變得非常簡單。",
+                body: `
+                    <p>字典序排序完成後，<code class="font-mono">item[0..6]</code> 依序為：<code class="font-mono text-emerald-300">["biscuit", "biscuit", "juice", "juice", "orange", "orange", "steak"]</code>。</p>
+                    <p>所有重複品項都已緊鄰排列，只需跟「前一格」比較即可判斷是否重複！</p>
+                `
+            },
+            {
+                pillTitle: "6. 相鄰去重輸出",
+                subtitle: "STAGE 6 • strcmp(item[i], item[i-1]) == 0 跳過重複項",
+                title: "相鄰比對剔除重複，並精準控制空白間隔輸出",
+                highlightLines: [28, 29, 30, 31, 32],
+                voiceScript: "第六階段，相鄰去重與輸出。第二十八行先印出排好序的第一項 item 零，確保行首沒有多餘空白。接著從 i 等於一開始往後掃描，只要 strcmp 發現 item i 跟前一項 item i 減一完全相同，就執行 continue 跳過；只有遇到新單字時，才先印一個空白再印出單字。",
+                body: `
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>第 28 行</strong>：先印出 <code class="font-mono text-emerald-300">item[0]</code>（<code class="font-mono">"biscuit"</code>），避免行首出現多餘空格。</li>
+                        <li><strong>第 30 行</strong>：若 <code class="font-mono text-rose-400">strcmp(item[i], item[i-1]) == 0</code> 代表與前項重複，直接 <code class="font-mono">continue</code> 略過。</li>
+                        <li><strong>第 31 行</strong>：遇到不重複的新單字時，先輸出 <code class="font-mono">" "</code> 再輸出 <code class="font-mono">item[i]</code>。</li>
+                    </ul>
+                `
+            },
+            {
+                pillTitle: "7. 次筆測資與總結",
+                subtitle: "STAGE 7 • 第 2 筆測資執行與演算法複雜度總結",
+                title: "完成第 2 筆測資輸出，程式優雅結束",
+                highlightLines: [20, 32],
+                voiceScript: "第七階段，處理第二筆測資並總結。while 迴圈繼續讀入第二行 apple orange soap orange soap，經過同樣的切字、指標排序與相鄰去重後，輸出 apple orange soap。整支程式利用指標零拷貝技巧，時間複雜度為 O N log N 乘以單字長度，高效完成任務！",
+                body: `
+                    <p><code class="font-mono">while (t--)</code> 繼續處理第 2 筆測資，重複執行「整行讀入 → <code class="font-mono">strtok</code> 切字 → <code class="font-mono">qsort</code> 指標排序 → 相鄰去重輸出」，最終得到 <code class="font-mono text-emerald-300 font-bold">apple orange soap</code>。</p>
+                `
+            }
+        ];
+
+        // ==========================================
+        // 模組 2 資料：strtok 原地切字深度動畫 (6 步驟)
+        // ==========================================
+        const STRTOK_CHARS = [
+            's', 't', 'e', 'a', 'k', ' ',
+            'o', 'r', 'a', 'n', 'g', 'e', ' ',
+            'j', 'u', 'i', 'c', 'e', '\\0'
+        ];
+
+        const STRTOK_STEPS = [
+            {
+                pillTitle: "0. 初始狀態",
+                subtitle: "STRTOK STEP 0 • cin.getline 讀入連續字元陣列",
+                title: "初始狀態：19 個字元連續存放在 line[0..18]",
+                highlightLines: [7, 8, 21],
+                tokenIdx: -1,
+                staticIdx: -1,
+                staticText: "尚未啟動",
+                nullified: [],
+                justNull: -1,
+                items: [null, null, null],
+                activeItem: -1,
+                voiceScript: "strtok 深度解析第零步。讀入字串 steak orange juice 後，十九個字元連續存放在 0x1000 到 0x1012。目前索引五和索引十二都還是空白字元，指標陣列 item 也尚未設定。",
+                body: `
+                    <p>讀入 <code class="font-mono">"steak orange juice"</code> 後，所有字元連續存放於 <code class="font-mono">0x1000 ~ 0x1012</code>，其中 <code class="font-mono text-amber-300">0x1005</code> 與 <code class="font-mono text-amber-300">0x100C</code> 仍是空白字元 <code class="font-mono">' '</code>。</p>
+                `
+            },
+            {
+                pillTitle: "1. 首次 strtok",
+                subtitle: "STRTOK STEP 1 • strtok(line, \" \") 遇空白原地改寫 '\\0'",
+                title: "首次呼叫 strtok(line, \" \")：就地切出 \"steak\"",
+                highlightLines: [22],
+                tokenIdx: 0,
+                staticIdx: 6,
+                staticText: "0x1006 ('o')",
+                nullified: [5],
+                justNull: 5,
+                items: [null, null, null],
+                activeItem: -1,
+                voiceScript: "第一步，首次呼叫 strtok，傳入 line 與空白分隔符。strtok 掃描到 0x1005 撞見第一個空白時，直接就地改寫成字串結尾符號斜線零！同時內部靜態指標記住下一個起點 0x1006，並回傳 0x1000 給 token。",
+                body: `
+                    <p>執行 <code class="font-mono text-blue-400">strtok(line, " ")</code>：在 <code class="font-mono text-rose-400 font-bold">0x1005</code> 遇見第一個空白，<strong>直接原地改寫為 <code class="font-mono text-rose-400">'\\0'</code></strong>，回傳 <code class="font-mono text-amber-300 font-bold">0x1000</code> 給 <code class="font-mono">token</code>，內部游標停在 <code class="font-mono text-blue-300">0x1006</code>。</p>
+                `
+            },
+            {
+                pillTitle: "2. 存入 item[0]",
+                subtitle: "STRTOK STEP 2 • item[0] = token (零拷貝儲存位址)",
+                title: "for 迴圈第 1 圈 (n = 0)：item[0] 指向 0x1000",
+                highlightLines: [23, 24],
+                tokenIdx: 0,
+                staticIdx: 6,
+                staticText: "0x1006 ('o')",
+                nullified: [5],
+                justNull: -1,
+                items: [{ addr: "0x1000", word: '"steak"' }, null, null],
+                activeItem: 0,
+                voiceScript: "第二步，進入 for 迴圈第一圈，n 等於零。執行 item 零等於 token，把 0x1000 存進 item 零，直接指向上方的字元 s，完全不需要複製任何字元。",
+                body: `
+                    <p>執行 <code class="font-mono text-teal-400 font-bold">item[0] = token;</code>，讓 <code class="font-mono">item[0]</code> 直接指向 <code class="font-mono">0x1000</code>（<code class="font-mono">"steak"</code>），實現高效零拷貝儲存。</p>
+                `
+            },
+            {
+                pillTitle: "3. 切出 item[1]",
+                subtitle: "STRTOK STEP 3 • strtok(NULL, \" \") 切出 \"orange\"",
+                title: "傳入 NULL 接續掃描：切出 \"orange\" 並存入 item[1]",
+                highlightLines: [24, 25],
+                tokenIdx: 6,
+                staticIdx: 13,
+                staticText: "0x100D ('j')",
+                nullified: [5, 12],
+                justNull: 12,
+                items: [
+                    { addr: "0x1000", word: '"steak"' },
+                    { addr: "0x1006", word: '"orange"' },
+                    null
+                ],
+                activeItem: 1,
+                voiceScript: "第三步，呼叫 strtok 傳入空指標 NULL，從上次記住的 0x1006 繼續掃描。在 0x100C 遇到第二個空白，就地改寫成斜線零，回傳 0x1006 給 token，並存入 item 一。",
+                body: `
+                    <p>傳入 <code class="font-mono text-amber-300 font-bold">NULL</code> 讓 <code class="font-mono">strtok</code> 從內部游標 <code class="font-mono">0x1006</code> 接續掃描，將 <code class="font-mono text-rose-400 font-bold">0x100C</code> 改寫為 <code class="font-mono">'\\0'</code>，並將 <code class="font-mono">0x1006</code> 存入 <code class="font-mono">item[1]</code>。</p>
+                `
+            },
+            {
+                pillTitle: "4. 切出 item[2]",
+                subtitle: "STRTOK STEP 4 • strtok(NULL, \" \") 切出 \"juice\"",
+                title: "切出最後單字 \"juice\" 並存入 item[2]",
+                highlightLines: [24, 25],
+                tokenIdx: 13,
+                staticIdx: 18,
+                staticText: "0x1012 ('\\0' 終點)",
+                nullified: [5, 12],
+                justNull: -1,
+                items: [
+                    { addr: "0x1000", word: '"steak"' },
+                    { addr: "0x1006", word: '"orange"' },
+                    { addr: "0x100D", word: '"juice"' }
+                ],
+                activeItem: 2,
+                voiceScript: "第四步，再次呼叫 strtok 傳入 NULL，從 0x100D 掃描到 0x1012 原本字串結尾的斜線零為止，回傳 0x100D 並存入 item 二。",
+                body: `
+                    <p>從 <code class="font-mono">0x100D</code> 掃描至原本字串尾端的 <code class="font-mono">0x1012</code>（<code class="font-mono">'\\0'</code>），回傳 <code class="font-mono">0x100D</code> 並存入 <code class="font-mono">item[2]</code>。</p>
+                `
+            },
+            {
+                pillTitle: "5. 迴圈結束",
+                subtitle: "STRTOK STEP 5 • 回傳 NULL，for 迴圈終止 (n = 3)",
+                title: "無剩餘單字：strtok 回傳 NULL，統計總數 n = 3",
+                highlightLines: [23, 25, 26],
+                tokenIdx: -1,
+                staticIdx: -1,
+                staticText: "NULL (掃描完畢)",
+                nullified: [5, 12],
+                justNull: -1,
+                items: [
+                    { addr: "0x1000", word: '"steak"' },
+                    { addr: "0x1006", word: '"orange"' },
+                    { addr: "0x100D", word: '"juice"' }
+                ],
+                activeItem: -1,
+                voiceScript: "第五步，再次呼叫 strtok 傳入 NULL 時，因為已經抵達字串尾端，strtok 回傳空指標 NULL。for 迴圈計數器 n 遞增為三後，檢查條件 token 為假，迴圈正式結束！",
+                body: `
+                    <p>再次呼叫 <code class="font-mono">strtok(NULL, " ")</code> 時因已達字串結尾而回傳 <code class="font-mono text-rose-400 font-bold">NULL</code>；迴圈執行 <code class="font-mono">n++</code> 成為 <code class="font-mono text-amber-300 font-bold">3</code> 後因條件為假而結束。</p>
+                `
+            }
+        ];
+
+        // ==========================================
+        // 模組 3 資料：qsort 雙重指標深度動畫 (6 步驟)
+        // ==========================================
+        const QSORT_STEPS = [
+            {
+                pillTitle: "0. 4參數與規範",
+                subtitle: "QSORT STEP 0 • qsort 四個參數解析與 const void* 固定規範",
+                title: "qsort 四個參數解析 & 第 4 參數固定接收兩個 const void*",
+                highlightLines: [10, 27],
+                voiceScript: "qsort 深度解析第零步，先看 qsort 的四個參數與比較函式的固定規範。第一個參數 item 是陣列開頭位址；第二個參數 n 是要排序的元素總數；第三個參數 sizeof char 星號，代表每個陣列格子佔八個位元組；第四個參數 cmpfunc 是自訂比較裁判。而 C 語言標準庫已經死規定，這個比較函式在定義時，參數永遠固定是兩個 const void 星號無型別指標，用來接收陣列格子的記憶體位址，並回傳 int 決定大小順序。",
+                body: `
+                    <p>呼叫 <code class="font-mono text-blue-400 font-bold">qsort(item, n, sizeof(char*), cmpfunc);</code> 需傳入 4 個參數，且第 4 參數的函式簽章為 C 標準庫死規定：</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>前 3 個參數</strong>：<code class="font-mono text-teal-300">item</code>（陣列起點）、<code class="font-mono text-amber-300">n</code>（元素個數）、<code class="font-mono text-purple-300">sizeof(char*)</code>（單一元素佔 8 bytes）。</li>
+                        <li><strong>第 4 參數規範</strong>：定義 <code class="font-mono text-blue-300 font-bold">int cmpfunc(const void* a, const void* b)</code> 時，<strong>參數永遠固定是兩個 <code class="font-mono text-amber-300">const void*</code> 指標</strong>，因為通用的 <code class="font-mono">qsort</code> 只能傳入「無型別的格子地址」，並規定比較時不可修改原資料（<code class="font-mono">const</code>）。</li>
+                    </ul>
+                `
+            },
+            {
+                pillTitle: "1. 初始狀態",
+                subtitle: "QSORT STEP 1 • strtok 切分後的記憶體三層結構",
+                title: "記憶體三層架構：指標陣列 item[0] 與 item[1] 指向原始字串",
+                highlightLines: [7, 8, 27],
+                voiceScript: "第一步，觀察排序前的記憶體三層架構。在呼叫 qsort 之前，中間的 item 零位於 0x2000，儲存 0x1000 指向 steak；item 一位於 0x2008，儲存 0x1006 指向 orange。",
+                body: `
+                    <p>在執行排序之前，右側 <code class="font-mono">line[]</code> 存放原始字元，中間 <code class="font-mono">item[]</code> 儲存字串起點位址：</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><code class="font-mono text-teal-400">item[0]</code>（位址 <code class="font-mono">0x2000</code>）儲存 <code class="font-mono">0x1000</code>（指向 <code class="font-mono">"steak"</code>）。</li>
+                        <li><code class="font-mono text-teal-400">item[1]</code>（位址 <code class="font-mono">0x2008</code>）儲存 <code class="font-mono">0x1006</code>（指向 <code class="font-mono">"orange"</code>）。</li>
+                    </ul>
+                `
+            },
+            {
+                pillTitle: "2. 傳入位址",
+                subtitle: "QSORT STEP 2 • qsort 傳遞陣列格子的記憶體位址",
+                title: "qsort 呼叫 cmpfunc 並傳入元素的「記憶體位址」",
+                highlightLines: [10, 27],
+                voiceScript: "第二步，傳入位址。qsort 比較第零格與第一格時，會把陣列格子的記憶體位址 0x2000 與 0x2008 交給 cmpfunc 的引數 a 與 b。此時它們依照規範先被包裝成無型別的 const void 星號指標。",
+                body: `
+                    <p><code class="font-mono">qsort</code> 並不會把字串傳進來，而是把「陣列格子本身的記憶體位址」交給 <code class="font-mono">cmpfunc</code>：</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li>引數 <code class="font-mono text-blue-400">a</code> 收到 <code class="font-mono">&amp;item[0]</code>（<code class="font-mono font-bold">0x2000</code>）；引數 <code class="font-mono text-blue-400">b</code> 收到 <code class="font-mono">&amp;item[1]</code>（<code class="font-mono font-bold">0x2008</code>）。</li>
+                        <li>因為參數型別被規範為 <code class="font-mono">const void*</code>，編譯器還不能直接對它取值，必須先還原型別。</li>
+                    </ul>
+                `
+            },
+            {
+                pillTitle: "3. 指標轉型",
+                subtitle: "QSORT STEP 3 • 型別轉型 (char**) a 與 (char**) b",
+                title: "第一步轉型：(char**) 還原雙重指標身分",
+                highlightLines: [11, 12],
+                voiceScript: "第三步，指標轉型。因為 item 陣列的每一格本身已經是指標 char 星號了，所以指向 item 格子的引數 a 和 b，實際身分是指向字元指標的雙重指標 char 兩顆星。寫括號 char 星號星號 a，就是告訴編譯器準備從 0x2000 讀取裡面的記憶體位址。",
+                body: `
+                    <p>因為 <code class="font-mono">item[0]</code> 本身已經是 <code class="font-mono text-teal-400">char*</code>，所以「指向 <code class="font-mono">item[0]</code> 的指標」就是雙重指標 <strong><code class="font-mono text-blue-400 font-bold">char**</code></strong>：</p>
+                    <p>執行 <code class="font-mono font-bold">(char**) a</code> 後，編譯器就知道從 <code class="font-mono">0x2000</code> 要讀取一個指標大小的記憶體位址。</p>
+                `
+            },
+            {
+                pillTitle: "4. 取值提領",
+                subtitle: "QSORT STEP 4 • 加星號取值 *(char**) a 得到 char* aa",
+                title: "第二步取值：*(char**) 打開信箱拿出字串位址",
+                highlightLines: [11, 12],
+                voiceScript: "第四步，取值提領。轉型成雙重指標後，在最前面加上一顆星號進行取值，就像順著 0x2000 打開 item 零的信箱，把裡面的 0x1000 拿出來交給區域變數 aa；同理 bb 拿到 0x1006。現在 aa 與 bb 就成功直接指向 steak 與 orange 的開頭。",
+                body: `
+                    <p>在 <code class="font-mono">(char**)</code> 前面加上星號 <code class="font-mono text-amber-400 font-bold">*</code>（解參考 / 取值）：</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><code class="font-mono text-amber-300">char *aa = *(char**) a;</code>：從 <code class="font-mono">0x2000</code> 取出 <code class="font-mono font-bold">0x1000</code>，直接指向 <code class="font-mono">"steak"</code>。</li>
+                        <li><code class="font-mono text-amber-300">char *bb = *(char**) b;</code>：從 <code class="font-mono">0x2008</code> 取出 <code class="font-mono font-bold">0x1006</code>，直接指向 <code class="font-mono">"orange"</code>。</li>
+                    </ul>
+                `
+            },
+            {
+                pillTitle: "5. 比對與交換",
+                subtitle: "QSORT STEP 5 • strcmp(aa, bb) 回傳正數，qsort 交換指標",
+                title: "strcmp 比對字典序，並交換 item 陣列中的指標",
+                highlightLines: [13, 14, 27],
+                voiceScript: "第五步，比對與交換。交給 strcmp 比較 steak 與 orange 的字典序，因為 s 大於 o，回傳正數。qsort 收到正數後，就會把 item 零與 item 一裡儲存的位址互換，變成 0x1006 與 0x1000，右側原始字串完全不需搬動！",
+                body: `
+                    <p>執行 <code class="font-mono text-blue-400 font-bold">strcmp(aa, bb)</code> 比較首字母：<code class="font-mono">'s' (115) &gt; 'o' (111)</code>，回傳<strong>正數</strong>：</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><code class="font-mono">qsort</code> 將 <code class="font-mono">item[0]</code> 與 <code class="font-mono">item[1]</code> 內的位址互換（變成 <code class="font-mono">0x1006</code> 與 <code class="font-mono">0x1000</code>）。</li>
+                        <li><strong>零字串搬移</strong>：右側 <code class="font-mono">line[]</code> 裡的原始文字完全不需搬動！</li>
+                    </ul>
+                `
+            }
+        ];
+
+        // ==========================================
+        // 全域狀態管理
+        // ==========================================
+        let currentMode = 'full'; // 'full' | 'strtok' | 'qsort'
+        let currentStep = 0;
+        let isAutoPlaying = false;
+        let autoPlayTimer = null;
+
+        // 語音合成 (TTS) 狀態
+        let isVoiceEnabled = true;
+        let speechRate = 1.0;
+        let availableVoices = [];
+        let selectedVoice = null;
+        const synth = window.speechSynthesis || null;
+
+        // DOM 參照
+        const codeContainer = document.getElementById('codeContainer');
+        const stepPillsContainer = document.getElementById('stepPills');
+        const visualCanvas = document.getElementById('visualCanvas');
+        const btnPrev = document.getElementById('btnPrev');
+        const btnNext = document.getElementById('btnNext');
+        const btnAutoPlay = document.getElementById('btnAutoPlay');
+        const btnReset = document.getElementById('btnReset');
+        const autoPlayIcon = document.getElementById('autoPlayIcon');
+        const autoPlayText = document.getElementById('autoPlayText');
+        const autoPlayIndicator = document.getElementById('autoPlayIndicator');
+
+        const btnVoiceToggle = document.getElementById('btnVoiceToggle');
+        const voiceIcon = document.getElementById('voiceIcon');
+        const voiceLabel = document.getElementById('voiceLabel');
+        const voiceWave = document.getElementById('voiceWave');
+        const btnReplayVoice = document.getElementById('btnReplayVoice');
+        const rateSelect = document.getElementById('rateSelect');
+        const voiceSelect = document.getElementById('voiceSelect');
+        const ttsStatusBadge = document.getElementById('ttsStatusBadge');
+        const teleprompterText = document.getElementById('teleprompterText');
+
+        // ==========================================
+        // 語音合成引擎 (Web Speech API)
+        // ==========================================
+        function loadVoices() {
+            if (!synth) {
+                voiceSelect.innerHTML = '<option value="">不支援 TTS</option>';
+                ttsStatusBadge.textContent = '不支援語音';
+                return;
+            }
+            const rawVoices = synth.getVoices();
+            if (!rawVoices.length) return;
+
+            const zhVoices = rawVoices.filter(v =>
+                v.lang.toLowerCase().includes('zh') ||
+                v.name.includes('Chinese') ||
+                v.name.includes('Taiwan') ||
+                v.name.includes('國語') ||
+                v.name.includes('中文')
+            );
+
+            zhVoices.sort((a, b) => {
+                const score = (v) => {
+                    const l = v.lang.toLowerCase();
+                    if (l === 'zh-tw') return 100;
+                    if (l.includes('tw') || l.includes('hant')) return 90;
+                    if (l.includes('hk')) return 70;
+                    if (l.includes('zh')) return 50;
+                    return 10;
+                };
+                return score(b) - score(a);
+            });
+
+            availableVoices = zhVoices.length > 0 ? zhVoices : rawVoices;
+            voiceSelect.innerHTML = '';
+
+            availableVoices.forEach((voice, idx) => {
+                const opt = document.createElement('option');
+                opt.value = idx;
+                opt.className = 'bg-slate-800';
+                opt.textContent = `${voice.name} (${voice.lang})`;
+                voiceSelect.appendChild(opt);
+            });
+
+            if (availableVoices.length > 0) {
+                selectedVoice = availableVoices[0];
+                voiceSelect.value = '0';
+            }
+        }
+
+        if (synth) {
+            loadVoices();
+            if (synth.onvoiceschanged !== undefined) {
+                synth.onvoiceschanged = loadVoices;
+            }
+        }
+
+        function setSpeakingUI(speaking, label = null) {
+            if (speaking) {
+                voiceWave.classList.remove('paused');
+                ttsStatusBadge.textContent = label || '🔊 講解中';
+                ttsStatusBadge.className = 'shrink-0 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-600 text-white animate-pulse';
+            } else {
+                voiceWave.classList.add('paused');
+                ttsStatusBadge.textContent = label || (isVoiceEnabled ? '語音就緒' : '已靜音');
+                ttsStatusBadge.className = 'shrink-0 px-2 py-0.5 rounded text-[11px] font-bold bg-slate-800 text-slate-300';
+            }
+        }
+
+        function cancelSpeech() {
+            if (autoPlayTimer) {
+                clearTimeout(autoPlayTimer);
+                autoPlayTimer = null;
+            }
+            if (synth && (synth.speaking || synth.pending)) {
+                synth.cancel();
+            }
+            setSpeakingUI(false);
+        }
+
+        function getStepsArray() {
+            if (currentMode === 'strtok') return STRTOK_STEPS;
+            if (currentMode === 'qsort') return QSORT_STEPS;
+            return FULL_STEPS;
+        }
+
+        function speakCurrentStep(onComplete = null) {
+            const steps = getStepsArray();
+            const stepData = steps[currentStep];
+            teleprompterText.textContent = stepData.voiceScript;
+            cancelSpeech();
+
+            if (!isVoiceEnabled || !synth) {
+                setSpeakingUI(false, isVoiceEnabled ? '不支援語音' : '已靜音');
+                if (onComplete) {
+                    autoPlayTimer = setTimeout(onComplete, 4200);
+                }
+                return;
+            }
+
+            const utter = new SpeechSynthesisUtterance(stepData.voiceScript);
+            utter.lang = selectedVoice ? selectedVoice.lang : 'zh-TW';
+            if (selectedVoice) utter.voice = selectedVoice;
+            utter.rate = speechRate;
+            utter.pitch = 1.0;
+
+            let done = false;
+            const finishHandler = () => {
+                if (done) return;
+                done = true;
+                setSpeakingUI(false, '本段播畢');
+                if (onComplete && isAutoPlaying) {
+                    autoPlayTimer = setTimeout(onComplete, 1100);
+                }
+            };
+
+            utter.onstart = () => setSpeakingUI(true, '🔊 講解中');
+            utter.onend = finishHandler;
+            utter.onerror = (e) => {
+                if (e.error !== 'interrupted' && e.error !== 'canceled') {
+                    finishHandler();
+                }
+            };
+
+            synth.speak(utter);
+        }
+
+        // ==========================================
+        // 左側 32 行程式碼面板初始化
+        // ==========================================
+        function buildCodePanel() {
+            codeContainer.innerHTML = '';
+            CPP_LINES.forEach(item => {
+                const row = document.createElement('div');
+                row.id = `cpp-line-${item.num}`;
+                row.className = 'code-line px-2 py-0.5 rounded border-l-4 border-transparent text-slate-300 whitespace-pre';
+                const numStr = String(item.num).padStart(2, ' ');
+                row.innerHTML = `<span class="text-slate-600 select-none mr-2">${numStr}</span>${item.code || ' '}`;
+                codeContainer.appendChild(row);
+            });
+        }
+
+        // ==========================================
+        // 動態視覺化舞台渲染器 (依照目前模組分派)
+        // ==========================================
+        function renderVisualCanvas() {
+            if (currentMode === 'full') {
+                renderFullStage(currentStep);
+            } else if (currentMode === 'strtok') {
+                renderStrtokStage(currentStep);
+            } else if (currentMode === 'qsort') {
+                renderQsortStage(currentStep);
+            }
+        }
+
+        // --- 渲染器 1：全程式解題流程 (Stage 0 ~ 7) ---
+        function renderFullStage(stageIdx) {
+            if (stageIdx === 0) {
+                visualCanvas.innerHTML = `
+                    <div class="space-y-4 animate-pop">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800">
+                                <div class="text-xs font-bold text-blue-400 mb-1.5">📥 範例輸入 (T = 2)</div>
+                                <pre class="font-mono text-xs text-slate-200 leading-relaxed bg-slate-900 p-2.5 rounded-lg border border-slate-800">2
+steak orange juice biscuit orange juice orange biscuit
+apple orange soap orange soap</pre>
+                            </div>
+                            <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800">
+                                <div class="text-xs font-bold text-emerald-400 mb-1.5">📤 範例輸出 (字典序無重複)</div>
+                                <pre class="font-mono text-xs text-emerald-300 leading-relaxed bg-slate-900 p-2.5 rounded-lg border border-slate-800">biscuit juice orange steak
+apple orange soap</pre>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                            <div class="p-3.5 rounded-xl bg-teal-950/30 border border-teal-800/70">
+                                <div class="text-xs font-bold text-teal-400 mb-1">1️⃣ strtok 原地切字</div>
+                                <p class="text-xs text-slate-300">把空白改寫為 <code class="text-rose-400">'\\0'</code>，用 <code class="text-teal-300">item[]</code> 記錄每個單字的開頭位址。</p>
+                            </div>
+                            <div class="p-3.5 rounded-xl bg-blue-950/30 border border-blue-800/70">
+                                <div class="text-xs font-bold text-blue-400 mb-1">2️⃣ qsort 指標排序</div>
+                                <p class="text-xs text-slate-300">僅交換指標位址，讓相同單字在 <code class="text-blue-300">item[]</code> 中相鄰靠攏。</p>
+                            </div>
+                            <div class="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-800/70">
+                                <div class="text-xs font-bold text-emerald-400 mb-1">3️⃣ 相鄰比對去重</div>
+                                <p class="text-xs text-slate-300">若 <code class="text-emerald-300">strcmp(item[i], item[i-1]) == 0</code> 則跳過不印。</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (stageIdx === 1) {
+                visualCanvas.innerHTML = `
+                    <div class="space-y-4 animate-pop">
+                        <div class="p-4 rounded-xl bg-slate-950 border border-emerald-800/70 glow-emerald">
+                            <div class="text-xs font-bold text-emerald-400 mb-2">🛡️ 為什麼改用「統一 cin.getline + atoi」？</div>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center font-mono text-xs">
+                                <div class="p-3 rounded-lg bg-slate-900 border border-slate-700 text-center">
+                                    <div class="text-slate-400 mb-1">輸入串流第一行</div>
+                                    <div class="text-base font-bold text-white">'2'  <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-400 border border-rose-700">'\\n'</span></div>
+                                    <div class="text-[11px] text-emerald-400 mt-1">getline 整行抽走並丟棄 '\\n'</div>
+                                </div>
+                                <div class="p-3 rounded-lg bg-slate-900 border border-teal-700 text-center">
+                                    <div class="text-slate-400 mb-1">char line[] 暫存</div>
+                                    <div class="text-base font-bold text-teal-300">"2\\0"</div>
+                                    <div class="text-[11px] text-slate-400 mt-1">緩衝區乾淨無殘留！</div>
+                                </div>
+                                <div class="p-3 rounded-lg bg-slate-900 border border-blue-600 text-center">
+                                    <div class="text-slate-400 mb-1">t = atoi(line)</div>
+                                    <div class="text-lg font-extrabold text-blue-300">int t = 2</div>
+                                    <div class="text-[11px] text-blue-400 mt-1">成功轉成整數迴圈次數</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (stageIdx === 2) {
+                visualCanvas.innerHTML = `
+                    <div class="space-y-4 animate-pop">
+                        <div class="flex items-center justify-between text-xs font-mono">
+                            <span class="px-2.5 py-1 rounded bg-blue-950 border border-blue-800 text-blue-300">while(t--) 進入第 1 輪 (t: 2 → 1)</span>
+                            <span class="text-slate-400">共 52 個字元 + 1 個 '\\0'</span>
+                        </div>
+                        <div class="p-4 rounded-xl bg-slate-950 border border-slate-800">
+                            <div class="text-xs font-mono text-slate-400 mb-2">char line[] 內容快照：</div>
+                            <div class="p-3 rounded-lg bg-slate-900 border border-teal-700/70 font-mono text-xs sm:text-sm text-teal-200 break-all leading-relaxed">
+                                "steak<span class="text-amber-400 font-bold">␣</span>orange<span class="text-amber-400 font-bold">␣</span>juice<span class="text-amber-400 font-bold">␣</span>biscuit<span class="text-amber-400 font-bold">␣</span>orange<span class="text-amber-400 font-bold">␣</span>juice<span class="text-amber-400 font-bold">␣</span>orange<span class="text-amber-400 font-bold">␣</span>biscuit<span class="text-rose-400 font-bold">\\0</span>"
+                            </div>
+                            <p class="mt-2.5 text-xs text-slate-400">
+                                注意：此時單字之間仍是空白字元 <code class="text-amber-400">'␣'</code>，尚未切開。
+                            </p>
+                        </div>
+                    </div>
+                `;
+            } else if (stageIdx === 3) {
+                const tokens = [
+                    { idx: 0, word: "steak", addr: "0x1000" },
+                    { idx: 1, word: "orange", addr: "0x1006" },
+                    { idx: 2, word: "juice", addr: "0x100D" },
+                    { idx: 3, word: "biscuit", addr: "0x1013" },
+                    { idx: 4, word: "orange", addr: "0x101B" },
+                    { idx: 5, word: "juice", addr: "0x1022" },
+                    { idx: 6, word: "biscuit", addr: "0x1028" }
+                ];
+                visualCanvas.innerHTML = `
+                    <div class="space-y-3.5 animate-pop">
+                        <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+                            <span class="px-2.5 py-1 rounded bg-teal-950 border border-teal-800 text-teal-300">strtok 原地覆寫 '\\0' 完成</span>
+                            <span class="px-2.5 py-1 rounded bg-amber-950 border border-amber-700 text-amber-300 font-bold">統計項目總數 n = 7</span>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                            ${tokens.map(t => `
+                                <div class="p-2.5 rounded-xl bg-slate-950 border border-teal-700/80">
+                                    <div class="flex justify-between text-[11px] font-mono text-slate-400">
+                                        <span class="text-teal-400 font-bold">item[${t.idx}]</span>
+                                        <span>${t.addr}</span>
+                                    </div>
+                                    <div class="mt-1 font-mono font-bold text-sm text-white">"${t.word}"</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            } else if (stageIdx === 4) {
+                visualCanvas.innerHTML = `
+                    <div class="space-y-4 animate-pop">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+                            <div class="p-3.5 rounded-xl bg-blue-950/40 border-2 border-blue-500 glow-blue text-center">
+                                <div class="text-xs font-mono text-blue-300 font-bold">1. qsort 傳入參數</div>
+                                <div class="my-2 py-1.5 rounded bg-slate-950 font-mono text-sm font-bold text-blue-300">const void* a</div>
+                                <div class="text-[11px] text-slate-300">裝著 <code class="text-amber-300">&amp;item[i]</code> 的格子地址</div>
+                            </div>
+                            <div class="p-3.5 rounded-xl bg-amber-950/40 border-2 border-amber-400 glow-amber text-center">
+                                <div class="text-xs font-mono text-amber-300 font-bold">2. 轉型 + 取值還原</div>
+                                <div class="my-2 py-1.5 rounded bg-slate-950 font-mono text-sm font-bold text-amber-300">*(char**) a</div>
+                                <div class="text-[11px] text-slate-300">先轉 <code class="text-blue-300">char**</code> 再加 <code class="text-amber-300">*</code> 打開信箱</div>
+                            </div>
+                            <div class="p-3.5 rounded-xl bg-teal-950/40 border-2 border-teal-400 glow-teal text-center">
+                                <div class="text-xs font-mono text-teal-300 font-bold">3. 交給 strcmp 比對</div>
+                                <div class="my-2 py-1.5 rounded bg-slate-950 font-mono text-sm font-bold text-teal-300">strcmp(aa, bb)</div>
+                                <div class="text-[11px] text-slate-300">直接比較兩個字串的字典序</div>
+                            </div>
+                        </div>
+                        <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 text-center">
+                            💡 點擊上方「<strong>🔍 觀看 qsort 四參數與雙重指標箭頭動畫</strong>」可觀看三層記憶體動態連線箭頭！
+                        </div>
+                    </div>
+                `;
+            } else if (stageIdx === 5) {
+                const sorted = ["biscuit", "biscuit", "juice", "juice", "orange", "orange", "steak"];
+                const dupFlags = [false, true, false, true, false, true, false];
+                visualCanvas.innerHTML = `
+                    <div class="space-y-3.5 animate-pop">
+                        <div class="text-xs font-mono text-purple-300 font-bold">
+                            ✨ qsort 排序完成後的 item[0..6]（相同單字已全部相鄰靠攏）：
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                            ${sorted.map((w, i) => `
+                                <div class="p-2.5 rounded-xl bg-slate-950 border-2 ${dupFlags[i] ? 'border-rose-500/80' : 'border-emerald-500/80'}">
+                                    <div class="flex justify-between text-[11px] font-mono">
+                                        <span class="text-slate-400">item[${i}]</span>
+                                        <span class="${dupFlags[i] ? 'text-rose-400 font-bold' : 'text-emerald-400'}">${dupFlags[i] ? '與前項重複' : '首次出現'}</span>
+                                    </div>
+                                    <div class="mt-1 font-mono font-bold text-sm text-white">"${w}"</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            } else if (stageIdx === 6) {
+                const trace = [
+                    { i: 0, word: "biscuit", out: '"biscuit"', skip: false },
+                    { i: 1, word: "biscuit", out: "(略過)", skip: true },
+                    { i: 2, word: "juice",   out: '" juice"', skip: false },
+                    { i: 3, word: "juice",   out: "(略過)", skip: true },
+                    { i: 4, word: "orange",  out: '" orange"', skip: false },
+                    { i: 5, word: "orange",  out: "(略過)", skip: true },
+                    { i: 6, word: "steak",   out: '" steak"', skip: false }
+                ];
+                visualCanvas.innerHTML = `
+                    <div class="space-y-3 animate-pop">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs font-mono">
+                            ${trace.map(r => `
+                                <div class="px-3 py-1.5 rounded-lg border ${r.skip ? 'bg-rose-950/25 border-rose-900/60 text-slate-400' : 'bg-emerald-950/30 border-emerald-800/70 text-slate-200'} flex items-center justify-between">
+                                    <span>i=${r.i} <strong>"${r.word}"</strong></span>
+                                    <span class="${r.skip ? 'text-rose-400' : 'text-emerald-400 font-bold'}">${r.out}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="p-3 rounded-xl bg-slate-950 border border-emerald-600 glow-emerald font-mono text-xs sm:text-sm text-center">
+                            第 1 筆最終輸出：<span class="text-emerald-300 font-extrabold">biscuit juice orange steak</span>
+                        </div>
+                    </div>
+                `;
+            } else if (stageIdx === 7) {
+                visualCanvas.innerHTML = `
+                    <div class="space-y-4 animate-pop">
+                        <div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5 font-mono text-xs">
+                            <div class="text-blue-400 font-bold">🔄 第 2 筆測資執行軌跡 (t: 1 → 0)：</div>
+                            <div>1. 讀入字串：<span class="text-slate-200">"apple orange soap orange soap"</span></div>
+                            <div>2. strtok 切字：<span class="text-teal-300">n = 5</span> 個指標</div>
+                            <div>3. qsort 排序：<span class="text-purple-300">["apple", "orange", "orange", "soap", "soap"]</span></div>
+                            <div>4. 去重輸出：<span class="text-emerald-300 font-bold">apple orange soap</span></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 text-center text-xs">
+                            <div class="p-3 rounded-xl bg-blue-950/30 border border-blue-800/70">
+                                <div class="text-slate-400">時間複雜度</div>
+                                <div class="font-mono font-bold text-blue-300 text-sm mt-1">O(T · N log N · L)</div>
+                            </div>
+                            <div class="p-3 rounded-xl bg-teal-950/30 border border-teal-800/70">
+                                <div class="text-slate-400">額外空間複雜度</div>
+                                <div class="font-mono font-bold text-teal-300 text-sm mt-1">O(N) 指標零拷貝</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // --- 渲染器 2：strtok 原地切字深度動畫 (Step 0 ~ 5，含動態指標箭頭) ---
+        function renderStrtokStage(stepIdx) {
+            const st = STRTOK_STEPS[stepIdx];
+
+            const cellsHtml = STRTOK_CHARS.map((origCh, idx) => {
+                const addr = '0x' + (0x1000 + idx).toString(16).toUpperCase();
+                const isNullified = st.nullified.includes(idx);
+                const isJustNull = st.justNull === idx;
+                const isToken = st.tokenIdx === idx;
+                const isStatic = st.staticIdx === idx;
+
+                let cellStyle = 'bg-slate-950 border-slate-700 text-slate-200';
+                let charText = origCh === ' ' ? "' '" : (origCh === '\\0' ? "'\\0'" : `'${origCh}'`);
+
+                if (isNullified) {
+                    charText = "'\\0'";
+                    cellStyle = `bg-rose-950/90 border-rose-500 text-rose-300 glow-rose ${isJustNull ? 'animate-null-pop' : ''}`;
+                } else if (origCh === '\\0') {
+                    cellStyle = 'bg-slate-900 border-rose-800/70 text-rose-400';
+                } else if (origCh === ' ') {
+                    cellStyle = 'bg-slate-900 border-slate-700 text-slate-500';
+                }
+
+                if (isToken) {
+                    cellStyle += ' border-amber-400 bg-amber-950/50 text-amber-200 glow-amber';
+                } else if (isStatic) {
+                    cellStyle += ' border-blue-400 glow-blue';
+                }
+
+                return `
+                    <div class="relative flex flex-col items-center">
+                        ${isToken ? '<div class="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 font-mono font-extrabold text-[9px] shadow z-20">▼ token</div>' : ''}
+                        <span class="text-[9px] font-mono text-slate-500 mb-0.5">[${idx}]</span>
+                        <div data-cell="1" class="mem-cell w-full py-2 rounded-lg border text-center font-mono font-bold text-xs ${cellStyle}">${charText}</div>
+                        <span class="text-[8.5px] font-mono text-slate-400 mt-0.5">${addr}</span>
+                        ${isStatic ? '<div class="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap px-1.5 py-0.5 rounded bg-blue-600 text-white font-mono font-bold text-[9px] shadow z-20">▲ next</div>' : ''}
+                    </div>
+                `;
+            }).join('');
+
+            const itemColors = ['teal', 'amber', 'blue'];
+            const itemsHtml = [0, 1, 2].map(i => {
+                const it = st.items[i];
+                const col = itemColors[i];
+                if (it) {
+                    return `
+                        <div id="strtok-card-item-${i}" class="p-2.5 rounded-xl bg-slate-950 border-2 border-${col}-500 ${st.activeItem === i ? `glow-${col}` : ''} text-center">
+                            <div class="text-xs font-mono font-bold text-${col}-400">item[${i}]</div>
+                            <div class="my-1 py-1 rounded bg-slate-900 border border-${col}-700 font-mono font-bold text-sm text-${col}-300">${it.addr}</div>
+                            <div class="text-[11px] font-mono text-slate-300">指向 ${it.word}</div>
+                        </div>
+                    `;
+                }
+                return `
+                    <div id="strtok-card-item-${i}" class="p-2.5 rounded-xl bg-slate-950/50 border-2 border-slate-800 opacity-50 text-center">
+                        <div class="text-xs font-mono font-bold text-slate-500">item[${i}]</div>
+                        <div class="my-1 py-1 rounded bg-slate-900 border border-slate-800 font-mono text-xs text-slate-500">未設定</div>
+                        <div class="text-[11px] font-mono text-slate-600">—</div>
+                    </div>
+                `;
+            }).join('');
+
+            visualCanvas.innerHTML = `
+                <div id="strtokStage" class="relative space-y-4">
+                    <svg id="strtokArrowOverlay" class="hidden md:block absolute inset-0 w-full h-full pointer-events-none z-20" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <marker id="st-arrow-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#14b8a6" />
+                            </marker>
+                            <marker id="st-arrow-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#f59e0b" />
+                            </marker>
+                            <marker id="st-arrow-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#3b82f6" />
+                            </marker>
+                        </defs>
+                        <path id="st-conn-0" fill="none" stroke="#14b8a6" stroke-width="2.5" marker-end="url(#st-arrow-teal)" opacity="0" style="transition: opacity 0.35s ease;" />
+                        <path id="st-conn-1" fill="none" stroke="#f59e0b" stroke-width="2.5" marker-end="url(#st-arrow-amber)" opacity="0" style="transition: opacity 0.35s ease;" />
+                        <path id="st-conn-2" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#st-arrow-blue)" opacity="0" style="transition: opacity 0.35s ease;" />
+                    </svg>
+
+                    <div class="relative z-10 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span class="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 font-mono font-bold text-slate-200">
+                            連續記憶體 char line[] (0x1000 ~ 0x1012)
+                        </span>
+                        <div class="flex items-center gap-3 font-mono text-[11px] text-slate-400">
+                            <span><strong class="text-amber-400">▼ token</strong> 回傳起點</span>
+                            <span><strong class="text-blue-400">▲ next</strong> 內部靜態指標</span>
+                            <span><strong class="text-rose-400">'\\0'</strong> 原地覆寫</span>
+                        </div>
+                    </div>
+
+                    <div id="strtokScrollWrap" class="relative z-10 overflow-x-auto pb-1">
+                        <div class="grid min-w-[780px] gap-1 pt-6 pb-6 px-1" style="grid-template-columns: repeat(19, minmax(0, 1fr));">
+                            ${cellsHtml}
+                        </div>
+                    </div>
+
+                    <div class="relative z-10 grid grid-cols-1 md:grid-cols-12 gap-3 pt-2 border-t border-slate-800/80 items-stretch">
+                        <div class="md:col-span-8 grid grid-cols-3 gap-2.5">${itemsHtml}</div>
+                        <div class="md:col-span-4 p-3 rounded-xl bg-blue-950/25 border border-blue-900/70 flex flex-col justify-between text-xs">
+                            <div class="font-bold text-blue-300">🧭 strtok 內部靜態游標</div>
+                            <div class="my-1.5 px-2.5 py-1.5 rounded bg-slate-950 border border-blue-800 font-mono font-bold text-blue-200 text-center">
+                                ${st.staticText}
+                            </div>
+                            <div class="text-[11px] text-slate-400">傳入 <code class="text-amber-300">NULL</code> 時由此接續掃描</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const scrollWrap = document.getElementById('strtokScrollWrap');
+            if (scrollWrap) {
+                scrollWrap.addEventListener('scroll', () => requestAnimationFrame(updateAllArrows));
+            }
+        }
+
+        // --- 渲染器 3：qsort 雙重指標三層架構深度動畫 (Step 0: 4參數規範, Step 1~5: 三層記憶體箭頭) ---
+        function renderQsortStage(stepIdx) {
+            if (stepIdx === 0) {
+                visualCanvas.innerHTML = `
+                    <div class="space-y-4 animate-pop">
+                        <!-- 函式呼叫拆解卡片 -->
+                        <div class="p-3.5 rounded-xl bg-slate-950 border border-blue-800/80">
+                            <div class="text-xs font-bold text-blue-400 mb-2.5 flex items-center justify-between">
+                                <span>📦 qsort( base, num, size, compar ) 四大參數拆解</span>
+                                <span class="font-mono text-[11px] text-slate-400">&lt;cstdlib&gt;</span>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                                <div class="p-2.5 rounded-xl bg-slate-900 border-2 border-teal-500/80">
+                                    <div class="text-[10px] font-mono text-teal-400 font-bold">參數 1：base (陣列起點)</div>
+                                    <div class="my-1 font-mono font-extrabold text-sm text-white">item</div>
+                                    <div class="text-[11px] text-slate-300 leading-snug">要排序的目標陣列起始記憶體位址（<code class="text-teal-300">&amp;item[0]</code>）。</div>
+                                </div>
+                                <div class="p-2.5 rounded-xl bg-slate-900 border-2 border-amber-500/80">
+                                    <div class="text-[10px] font-mono text-amber-400 font-bold">參數 2：num (元素數量)</div>
+                                    <div class="my-1 font-mono font-extrabold text-sm text-white">n</div>
+                                    <div class="text-[11px] text-slate-300 leading-snug">陣列中有幾個元素要參與排序（僅排前 <code class="text-amber-300">n</code> 格）。</div>
+                                </div>
+                                <div class="p-2.5 rounded-xl bg-slate-900 border-2 border-purple-500/80">
+                                    <div class="text-[10px] font-mono text-purple-400 font-bold">參數 3：size (單格大小)</div>
+                                    <div class="my-1 font-mono font-extrabold text-sm text-white">sizeof(char*)</div>
+                                    <div class="text-[11px] text-slate-300 leading-snug">每格裝的是指標（8 bytes），<code class="text-purple-300">qsort</code> 據此計算每格位址。</div>
+                                </div>
+                                <div class="p-2.5 rounded-xl bg-blue-950/50 border-2 border-blue-400 glow-blue">
+                                    <div class="text-[10px] font-mono text-blue-300 font-bold">參數 4：compar (比較裁判)</div>
+                                    <div class="my-1 font-mono font-extrabold text-sm text-amber-300">cmpfunc</div>
+                                    <div class="text-[11px] text-slate-200 leading-snug">自訂比大小函式，決定兩元素的先後順序。</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 第 4 個參數函式定義規範框 -->
+                        <div class="p-4 rounded-xl bg-gradient-to-br from-slate-950 to-blue-950/30 border-2 border-amber-500/70 glow-amber">
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                <span class="text-xs font-bold text-amber-300">⚖️ 第 4 個參數函式定義的「死規定（函式簽章規範）」</span>
+                                <span class="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/50 font-mono text-[11px] text-amber-200">固定接收兩個 const void*</span>
+                            </div>
+                            <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 font-mono text-xs sm:text-sm text-center mb-2.5">
+                                <span class="text-purple-400 font-bold">int</span> <span class="text-blue-400 font-bold">cmpfunc</span>( <span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/50">const void* a</span> , <span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/50">const void* b</span> )
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                                <div class="p-2 rounded-lg bg-slate-900/90 border border-slate-800">
+                                    <div class="font-bold text-blue-300 mb-0.5">1. 為何規定是 void*？</div>
+                                    <div class="text-slate-300 text-[11px]">為了通用性，<code class="text-blue-300">qsort</code> 不知道陣列裝什麼型別，只能傳「無型別格子位址」進來。</div>
+                                </div>
+                                <div class="p-2 rounded-lg bg-slate-900/90 border border-slate-800">
+                                    <div class="font-bold text-teal-300 mb-0.5">2. 為何加上 const？</div>
+                                    <div class="text-slate-300 text-[11px]">規定裁判在比較大小時「只能讀取、不能偷改」原始陣列裡的資料。</div>
+                                </div>
+                                <div class="p-2 rounded-lg bg-slate-900/90 border border-slate-800">
+                                    <div class="font-bold text-amber-300 mb-0.5">3. 回傳值 int 意義</div>
+                                    <div class="text-slate-300 text-[11px]"><code class="text-emerald-400">&lt;0</code> a排前 ｜ <code class="text-slate-400">0</code> 相等 ｜ <code class="text-rose-400">&gt;0</code> b排前（交換）。</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            // 步驟 1 ~ 5：三層記憶體架構與動態 SVG 箭頭
+            const isArgActive = stepIdx >= 2 && stepIdx <= 4;
+            const isCast = stepIdx >= 3;
+            const isDeref = stepIdx >= 4;
+            const isSwapped = stepIdx === 5;
+
+            visualCanvas.innerHTML = `
+                <div class="space-y-4">
+                    <!-- 頂部圖例列 -->
+                    <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-mono text-slate-400 pb-2 border-b border-slate-800/80">
+                        <span>三層記憶體尋址連線圖（桌面版即時動態箭頭）</span>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <span class="flex items-center gap-1"><span class="w-3.5 h-0.5 bg-blue-500 inline-block"></span> 引數指標 (void* / char**)</span>
+                            <span class="flex items-center gap-1"><span class="w-3.5 h-0.5 bg-teal-500 inline-block"></span> 字串指標 (char*)</span>
+                            <span class="flex items-center gap-1"><span class="w-3.5 h-0.5 border-t-2 border-dashed border-amber-400 inline-block"></span> 取值提領 *(char**)</span>
+                        </div>
+                    </div>
+
+                    <div id="qsortStage" class="relative grid grid-cols-1 md:grid-cols-11 gap-4 md:gap-2 items-start min-h-[340px]">
+                        <!-- 動態 SVG 連線覆蓋層 -->
+                        <svg id="qsortArrowOverlay" class="hidden md:block absolute inset-0 w-full h-full pointer-events-none z-20" xmlns="http://www.w3.org/2000/svg">
+                            <defs>
+                                <marker id="qs-head-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                    <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#3b82f6" />
+                                </marker>
+                                <marker id="qs-head-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                    <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#14b8a6" />
+                                </marker>
+                                <marker id="qs-head-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                    <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#f59e0b" />
+                                </marker>
+                                <marker id="qs-head-purple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                    <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#a855f7" />
+                                </marker>
+                                <filter id="qs-glow" x="-20%" y="-20%" width="140%" height="140%">
+                                    <feGaussianBlur stdDeviation="2.5" result="blur" />
+                                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                                </filter>
+                            </defs>
+
+                            <!-- 連線 1: a -> item[0] -->
+                            <path id="qs-path-a-item0" fill="none" stroke="#3b82f6" stroke-width="2.8" marker-end="url(#qs-head-blue)" opacity="0" style="transition: opacity 0.35s ease;" />
+                            <!-- 連線 2: b -> item[1] -->
+                            <path id="qs-path-b-item1" fill="none" stroke="#3b82f6" stroke-width="2.8" stroke-dasharray="6,4" marker-end="url(#qs-head-blue)" opacity="0" style="transition: opacity 0.35s ease;" />
+
+                            <!-- 連線 3: item[0] -> line (steak 或 orange) -->
+                            <path id="qs-path-item0-str" fill="none" stroke="#14b8a6" stroke-width="2.8" marker-end="url(#qs-head-teal)" opacity="1" style="transition: opacity 0.35s ease, stroke 0.35s ease;" />
+                            <!-- 連線 4: item[1] -> line (orange 或 steak) -->
+                            <path id="qs-path-item1-str" fill="none" stroke="#14b8a6" stroke-width="2.8" stroke-dasharray="6,4" marker-end="url(#qs-head-teal)" opacity="1" style="transition: opacity 0.35s ease, stroke 0.35s ease;" />
+
+                            <!-- 連線 5: 區域變數 aa -> steak (發光流動虛線) -->
+                            <path id="qs-path-aa-str" class="animate-flow" fill="none" stroke="#f59e0b" stroke-width="3.5" stroke-dasharray="8,4" marker-end="url(#qs-head-amber)" filter="url(#qs-glow)" opacity="0" style="transition: opacity 0.35s ease;" />
+                            <!-- 連線 6: 區域變數 bb -> orange (發光流動虛線) -->
+                            <path id="qs-path-bb-str" class="animate-flow" fill="none" stroke="#f59e0b" stroke-width="3.5" stroke-dasharray="8,4" marker-end="url(#qs-head-amber)" filter="url(#qs-glow)" opacity="0" style="transition: opacity 0.35s ease;" />
+                        </svg>
+
+                        <!-- 左欄 (3欄)：cmpfunc 引數指標 (void* -> char**) -->
+                        <div class="md:col-span-3 flex flex-col gap-3 z-10">
+                            <div class="text-center text-xs font-bold text-blue-400 bg-blue-950/50 border border-blue-800/70 py-1 rounded-lg">
+                                1. cmpfunc 引數 (Stack)
+                            </div>
+                            <div class="memory-card p-3 rounded-xl bg-slate-950 border-2 ${isArgActive ? 'border-blue-500 glow-blue' : 'border-slate-800 opacity-50'}">
+                                <div class="flex justify-between text-[10.5px] font-mono mb-1">
+                                    <span class="font-bold ${isCast ? 'text-amber-300' : 'text-blue-400'}">${isCast ? '(char**) a' : 'const void* a'}</span>
+                                    <span class="text-slate-500">0x3000</span>
+                                </div>
+                                <div id="qs-box-arg-a" class="py-1.5 rounded bg-slate-900 border border-blue-800 text-center font-mono font-bold text-base text-blue-300">0x2000</div>
+                                <div class="mt-1 text-[10.5px] text-center text-slate-400">${stepIdx === 1 ? '尚未進入 cmpfunc' : '指向 item[0] 的地址'}</div>
+                            </div>
+                            <div class="memory-card p-3 rounded-xl bg-slate-950 border-2 ${isArgActive ? 'border-blue-500 glow-blue' : 'border-slate-800 opacity-50'}">
+                                <div class="flex justify-between text-[10.5px] font-mono mb-1">
+                                    <span class="font-bold ${isCast ? 'text-amber-300' : 'text-blue-400'}">${isCast ? '(char**) b' : 'const void* b'}</span>
+                                    <span class="text-slate-500">0x3008</span>
+                                </div>
+                                <div id="qs-box-arg-b" class="py-1.5 rounded bg-slate-900 border border-blue-800 text-center font-mono font-bold text-base text-blue-300">0x2008</div>
+                                <div class="mt-1 text-[10.5px] text-center text-slate-400">${stepIdx === 1 ? '尚未進入 cmpfunc' : '指向 item[1] 的地址'}</div>
+                            </div>
+
+                            ${isDeref ? `
+                                <div class="pt-1 border-t border-dashed border-amber-500/60 flex flex-col gap-2 animate-pop">
+                                    <div class="text-[10.5px] font-bold text-amber-400 text-center">✨ 提領 *(char**) 後得到的指標</div>
+                                    <div class="p-2 rounded-xl bg-amber-950/40 border-2 border-amber-400 glow-amber">
+                                        <div class="flex justify-between text-[10px] font-mono mb-1">
+                                            <span class="font-bold text-amber-300">char* aa</span>
+                                            <span class="text-amber-400/80">指向 steak</span>
+                                        </div>
+                                        <div id="qs-box-local-aa" class="py-1 rounded bg-slate-950 border border-amber-600 text-center font-mono font-bold text-sm text-amber-300">0x1000</div>
+                                    </div>
+                                    <div class="p-2 rounded-xl bg-amber-950/40 border-2 border-amber-400 glow-amber">
+                                        <div class="flex justify-between text-[10px] font-mono mb-1">
+                                            <span class="font-bold text-amber-300">char* bb</span>
+                                            <span class="text-amber-400/80">指向 orange</span>
+                                        </div>
+                                        <div id="qs-box-local-bb" class="py-1 rounded bg-slate-950 border border-amber-600 text-center font-mono font-bold text-sm text-amber-300">0x1006</div>
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <!-- 空白間隔欄 1 (供桌面版 SVG 箭頭穿過) -->
+                        <div class="hidden md:block md:col-span-1"></div>
+
+                        <!-- 中欄 (3欄)：指標陣列 char* item[] -->
+                        <div class="md:col-span-3 flex flex-col gap-3 z-10">
+                            <div class="text-center text-xs font-bold text-teal-400 bg-teal-950/50 border border-teal-800/70 py-1 rounded-lg">
+                                2. 指標陣列 char* item[]
+                            </div>
+                            <div id="qs-card-item-0" class="memory-card p-3 rounded-xl bg-slate-950 border-2 ${isSwapped ? 'border-purple-500 glow-purple' : (isCast ? 'border-teal-400 glow-teal' : 'border-teal-700/70')}">
+                                <div class="flex justify-between text-[10.5px] font-mono mb-1">
+                                    <span class="font-bold text-teal-400">char* item[0]</span>
+                                    <span class="text-slate-400">位址 0x2000</span>
+                                </div>
+                                <div id="qs-box-item-0" class="py-1.5 rounded bg-slate-900 border ${isSwapped ? 'border-purple-500 text-purple-300' : 'border-teal-600 text-teal-300'} text-center font-mono font-bold text-base">
+                                    ${isSwapped ? '0x1006' : '0x1000'}
+                                </div>
+                                <div class="mt-1 text-[10.5px] text-center ${isSwapped ? 'text-purple-300 font-bold' : 'text-slate-400'}">
+                                    ${isSwapped ? '🔄 已交換！指向 "orange"' : '儲存 "steak" 開頭位址'}
+                                </div>
+                            </div>
+                            <div id="qs-card-item-1" class="memory-card p-3 rounded-xl bg-slate-950 border-2 ${isSwapped ? 'border-purple-500 glow-purple' : (isCast ? 'border-teal-400 glow-teal' : 'border-teal-700/70')}">
+                                <div class="flex justify-between text-[10.5px] font-mono mb-1">
+                                    <span class="font-bold text-teal-400">char* item[1]</span>
+                                    <span class="text-slate-400">位址 0x2008</span>
+                                </div>
+                                <div id="qs-box-item-1" class="py-1.5 rounded bg-slate-900 border ${isSwapped ? 'border-purple-500 text-purple-300' : 'border-teal-600 text-teal-300'} text-center font-mono font-bold text-base">
+                                    ${isSwapped ? '0x1000' : '0x1006'}
+                                </div>
+                                <div class="mt-1 text-[10.5px] text-center ${isSwapped ? 'text-purple-300 font-bold' : 'text-slate-400'}">
+                                    ${isSwapped ? '🔄 已交換！指向 "steak"' : '儲存 "orange" 開頭位址'}
+                                </div>
+                            </div>
+                            ${isSwapped ? `
+                                <div class="p-2.5 rounded-xl bg-purple-950/50 border border-purple-600 text-center text-[11px] text-purple-200 animate-pop">
+                                    <strong>零字串搬移！</strong><br>僅交換 8-byte 指標即完成排序
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <!-- 空白間隔欄 2 (供桌面版 SVG 箭頭穿過) -->
+                        <div class="hidden md:block md:col-span-1"></div>
+
+                        <!-- 右欄 (3欄)：字元陣列 char line[] -->
+                        <div class="md:col-span-3 flex flex-col gap-3 z-10">
+                            <div class="text-center text-xs font-bold text-slate-300 bg-slate-800 border border-slate-700 py-1 rounded-lg">
+                                3. 原始字串 char line[]
+                            </div>
+                            <div id="qs-card-str-steak" class="p-3 rounded-xl bg-slate-950 border-2 border-slate-700">
+                                <div class="flex justify-between text-[10.5px] font-mono mb-1.5">
+                                    <span class="font-bold text-slate-200">字串 1："steak"</span>
+                                    <span class="text-teal-400">0x1000</span>
+                                </div>
+                                <div class="grid grid-cols-6 gap-0.5 font-mono text-xs text-center font-bold">
+                                    <div class="py-1.5 rounded bg-slate-900 border-2 border-teal-500 text-teal-300">'s'</div>
+                                    <div class="py-1.5 rounded bg-slate-900 border border-slate-700">'t'</div>
+                                    <div class="py-1.5 rounded bg-slate-900 border border-slate-700">'e'</div>
+                                    <div class="py-1.5 rounded bg-slate-900 border border-slate-700">'a'</div>
+                                    <div class="py-1.5 rounded bg-slate-900 border border-slate-700">'k'</div>
+                                    <div class="py-1.5 rounded bg-rose-950/60 border border-rose-800 text-rose-400 text-[10px]">'\\0'</div>
+                                </div>
+                            </div>
+                            <div id="qs-card-str-orange" class="p-3 rounded-xl bg-slate-950 border-2 border-slate-700">
+                                <div class="flex justify-between text-[10.5px] font-mono mb-1.5">
+                                    <span class="font-bold text-slate-200">字串 2："orange"</span>
+                                    <span class="text-teal-400">0x1006</span>
+                                </div>
+                                <div class="grid grid-cols-7 gap-0.5 font-mono text-[11px] text-center font-bold">
+                                    <div class="py-1.5 rounded bg-slate-900 border-2 border-teal-500 text-teal-300">'o'</div>
+                                    <div class="py-1.5 rounded bg-slate-900 border border-slate-700">'r'</div>
+                                    <div class="py-1.5 rounded bg-slate-900 border border-slate-700">'a'</div>
+                                    <div class="py-1.5 rounded bg-slate-900 border border-slate-700">'n'</div>
+                                    <div class="py-1.5 rounded bg-slate-900 border border-slate-700">'g'</div>
+                                    <div class="py-1.5 rounded bg-slate-900 border border-slate-700">'e'</div>
+                                    <div class="py-1.5 rounded bg-rose-950/60 border border-rose-800 text-rose-400 text-[9px]">'\\0'</div>
+                                </div>
+                            </div>
+                            ${isSwapped ? `
+                                <div class="p-2.5 rounded-xl bg-amber-950/40 border border-amber-700 text-[11px] font-mono text-amber-200 animate-pop">
+                                    strcmp("steak", "orange"):<br>
+                                    <span class="text-rose-400 font-bold">'s'(115) &gt; 'o'(111)</span> → 回傳正數！
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // ==========================================
+        // 動態 SVG 箭頭連線計算引擎 (支援 qsort 與 strtok 模式)
+        // ==========================================
+        function connectHorizontalElements(stageEl, pathId, fromEl, toEl) {
+            const path = document.getElementById(pathId);
+            if (!stageEl || !path || !fromEl || !toEl) return;
+
+            const stageRect = stageEl.getBoundingClientRect();
+            const fromRect = fromEl.getBoundingClientRect();
+            const toRect = toEl.getBoundingClientRect();
+            if (fromRect.width === 0 || toRect.width === 0) return;
+
+            const startX = fromRect.right - stageRect.left + 3;
+            const startY = fromRect.top + fromRect.height / 2 - stageRect.top;
+            const endX = toRect.left - stageRect.left - 5;
+            const endY = toRect.top + toRect.height / 2 - stageRect.top;
+
+            const dx = Math.abs(endX - startX);
+            const cp1X = startX + dx * 0.45;
+            const cp1Y = startY;
+            const cp2X = endX - dx * 0.45;
+            const cp2Y = endY;
+
+            path.setAttribute('d', `M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`);
+        }
+
+        function updateAllArrows() {
+            if (currentMode === 'qsort') {
+                if (currentStep === 0) return;
+                const stage = document.getElementById('qsortStage');
+                if (!stage) return;
+
+                const boxArgA = document.getElementById('qs-box-arg-a');
+                const boxArgB = document.getElementById('qs-box-arg-b');
+                const cardItem0 = document.getElementById('qs-card-item-0');
+                const cardItem1 = document.getElementById('qs-card-item-1');
+                const boxItem0 = document.getElementById('qs-box-item-0');
+                const boxItem1 = document.getElementById('qs-box-item-1');
+                const boxLocalAA = document.getElementById('qs-box-local-aa');
+                const boxLocalBB = document.getElementById('qs-box-local-bb');
+                const cardSteak = document.getElementById('qs-card-str-steak');
+                const cardOrange = document.getElementById('qs-card-str-orange');
+
+                const pAItem0 = document.getElementById('qs-path-a-item0');
+                const pBItem1 = document.getElementById('qs-path-b-item1');
+                const pItem0Str = document.getElementById('qs-path-item0-str');
+                const pItem1Str = document.getElementById('qs-path-item1-str');
+                const pAAStr = document.getElementById('qs-path-aa-str');
+                const pBBStr = document.getElementById('qs-path-bb-str');
+
+                // 第 1 欄 -> 第 2 欄 (a -> item[0], b -> item[1])
+                connectHorizontalElements(stage, 'qs-path-a-item0', boxArgA, cardItem0);
+                connectHorizontalElements(stage, 'qs-path-b-item1', boxArgB, cardItem1);
+
+                // 第 2 欄 -> 第 3 欄 (步驟 5 交換指標指向對象)
+                if (currentStep === 5) {
+                    connectHorizontalElements(stage, 'qs-path-item0-str', boxItem0, cardOrange);
+                    connectHorizontalElements(stage, 'qs-path-item1-str', boxItem1, cardSteak);
+                    pItem0Str.setAttribute('stroke', '#a855f7');
+                    pItem1Str.setAttribute('stroke', '#a855f7');
+                    pItem0Str.setAttribute('marker-end', 'url(#qs-head-purple)');
+                    pItem1Str.setAttribute('marker-end', 'url(#qs-head-purple)');
+                } else {
+                    connectHorizontalElements(stage, 'qs-path-item0-str', boxItem0, cardSteak);
+                    connectHorizontalElements(stage, 'qs-path-item1-str', boxItem1, cardOrange);
+                    pItem0Str.setAttribute('stroke', '#14b8a6');
+                    pItem1Str.setAttribute('stroke', '#14b8a6');
+                    pItem0Str.setAttribute('marker-end', 'url(#qs-head-teal)');
+                    pItem1Str.setAttribute('marker-end', 'url(#qs-head-teal)');
+                }
+
+                // 區域變數 aa, bb -> 第 3 欄發光虛線
+                if (currentStep >= 4 && boxLocalAA && boxLocalBB) {
+                    connectHorizontalElements(stage, 'qs-path-aa-str', boxLocalAA, cardSteak);
+                    connectHorizontalElements(stage, 'qs-path-bb-str', boxLocalBB, cardOrange);
+                }
+
+                // 依步驟控制各箭頭透明度
+                if (currentStep === 1) {
+                    pAItem0.style.opacity = '0';
+                    pBItem1.style.opacity = '0';
+                    pAAStr.style.opacity = '0';
+                    pBBStr.style.opacity = '0';
+                } else if (currentStep === 2 || currentStep === 3) {
+                    pAItem0.style.opacity = '1';
+                    pBItem1.style.opacity = '1';
+                    pAAStr.style.opacity = '0';
+                    pBBStr.style.opacity = '0';
+                } else if (currentStep === 4) {
+                    pAItem0.style.opacity = '0.45';
+                    pBItem1.style.opacity = '0.45';
+                    pAAStr.style.opacity = '1';
+                    pBBStr.style.opacity = '1';
+                } else if (currentStep === 5) {
+                    pAItem0.style.opacity = '0';
+                    pBItem1.style.opacity = '0';
+                    pAAStr.style.opacity = '0.35';
+                    pBBStr.style.opacity = '0.35';
+                }
+            } else if (currentMode === 'strtok') {
+                const stage = document.getElementById('strtokStage');
+                if (!stage) return;
+                const stageRect = stage.getBoundingClientRect();
+                const cells = stage.querySelectorAll('[data-cell="1"]');
+                const targetIndices = [0, 6, 13];
+                const st = STRTOK_STEPS[currentStep];
+
+                [0, 1, 2].forEach(i => {
+                    const path = document.getElementById(`st-conn-${i}`);
+                    const card = document.getElementById(`strtok-card-item-${i}`);
+                    const targetCell = cells[targetIndices[i]];
+                    if (!path || !card || !targetCell) return;
+
+                    if (!st.items[i]) {
+                        path.style.opacity = '0';
+                        return;
+                    }
+
+                    const fromRect = card.getBoundingClientRect();
+                    const toRect = targetCell.getBoundingClientRect();
+                    if (fromRect.width === 0 || toRect.width === 0) return;
+
+                    const startX = fromRect.left + fromRect.width / 2 - stageRect.left;
+                    const startY = fromRect.top - stageRect.top - 3;
+                    const endX = toRect.left + toRect.width / 2 - stageRect.left;
+                    const endY = toRect.bottom - stageRect.top + 16;
+                    const midY = (startY + endY) / 2;
+
+                    path.setAttribute('d', `M ${startX} ${startY} C ${startX} ${midY}, ${endX} ${midY}, ${endX} ${endY}`);
+                    path.style.opacity = '1';
+                });
+            }
+        }
+
+        // ==========================================
+        // 切換模組與步驟的核心控制函式
+        // ==========================================
+        function switchMode(newMode, autoStart = false) {
+            stopAutoPlay();
+            currentMode = newMode;
+            currentStep = 0;
+
+            const modes = ['full', 'strtok', 'qsort'];
+            modes.forEach(m => {
+                const tab = document.getElementById(`tab-${m}`);
+                if (!tab) return;
+                if (m === currentMode) {
+                    tab.className = 'mode-tab px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition-all bg-blue-600 text-white shadow-sm cursor-pointer';
+                } else {
+                    tab.className = 'mode-tab px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer';
+                }
+            });
+
+            initStagePills();
+            if (autoStart) {
+                startAutoPlay();
+            } else {
+                goToStep(0, true);
+            }
+        }
+
+        function initStagePills() {
+            const steps = getStepsArray();
+            stepPillsContainer.innerHTML = '';
+            steps.forEach((step, idx) => {
+                const btn = document.createElement('button');
+                btn.textContent = step.pillTitle;
+                btn.className = 'step-pill px-2.5 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer';
+                btn.addEventListener('click', () => {
+                    stopAutoPlay();
+                    goToStep(idx, true);
+                });
+                stepPillsContainer.appendChild(btn);
+            });
+        }
+
+        function goToStep(stepIdx, shouldSpeak = false) {
+            const steps = getStepsArray();
+            currentStep = Math.max(0, Math.min(steps.length - 1, stepIdx));
+            const stepData = steps[currentStep];
+
+            // 1. 更新步驟膠囊按鈕樣式
+            document.querySelectorAll('.step-pill').forEach((pill, idx) => {
+                if (idx === currentStep) {
+                    pill.className = 'step-pill px-2.5 py-1 rounded-xl text-xs font-bold bg-blue-600 text-white shadow-sm transition-all cursor-pointer';
+                } else if (idx < currentStep) {
+                    pill.className = 'step-pill px-2.5 py-1 rounded-xl text-xs font-medium bg-blue-950/70 text-blue-300 border border-blue-800 transition-all cursor-pointer';
+                } else {
+                    pill.className = 'step-pill px-2.5 py-1 rounded-xl text-xs font-medium bg-slate-800 text-slate-400 hover:bg-slate-700 transition-all cursor-pointer';
+                }
+            });
+
+            btnPrev.disabled = currentStep === 0;
+            btnNext.disabled = currentStep === steps.length - 1;
+
+            // 2. 更新右側標題、解說文字與快捷跳轉按鈕
+            const modeLabel = currentMode === 'full' ? '階段' : '步驟';
+            document.getElementById('stageSubtitle').textContent = stepData.subtitle;
+            document.getElementById('explainBadge').textContent = `${modeLabel} ${currentStep} / ${steps.length - 1}`;
+            document.getElementById('explainTitle').textContent = stepData.title;
+            document.getElementById('explainBody').innerHTML = stepData.body;
+            teleprompterText.textContent = stepData.voiceScript;
+
+            const actionSlot = document.getElementById('stageActionSlot');
+            if (currentMode === 'full' && stepData.quickLink) {
+                actionSlot.innerHTML = `
+                    <button onclick="switchMode('${stepData.quickLink.mode}', false)" class="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/60 text-amber-300 text-xs font-bold transition cursor-pointer">
+                        ${stepData.quickLink.label} →
+                    </button>
+                `;
+            } else if (currentMode !== 'full') {
+                actionSlot.innerHTML = `
+                    <button onclick="switchMode('full', false)" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer">
+                        ← 返回全程式解題流程
+                    </button>
+                `;
+            } else {
+                actionSlot.innerHTML = '';
+            }
+
+            // 3. 更新左側 32 行程式碼高亮
+            const activeLines = stepData.highlightLines || [];
+            document.getElementById('activeLinesBadge').textContent = activeLines.length
+                ? `高亮第 ${activeLines.join(', ')} 行`
+                : '全程式總覽';
+
+            let firstHighlightedEl = null;
+            CPP_LINES.forEach(item => {
+                const el = document.getElementById(`cpp-line-${item.num}`);
+                if (!el) return;
+                if (activeLines.includes(item.num)) {
+                    el.classList.add('bg-blue-500/25', 'border-blue-400', 'text-white');
+                    el.classList.remove('border-transparent');
+                    if (!firstHighlightedEl) firstHighlightedEl = el;
+                } else {
+                    el.classList.remove('bg-blue-500/25', 'border-blue-400', 'text-white');
+                    el.classList.add('border-transparent');
+                }
+            });
+
+            if (firstHighlightedEl) {
+                firstHighlightedEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+
+            // 4. 渲染動態視覺化舞台並對齊 SVG 箭頭
+            renderVisualCanvas();
+            requestAnimationFrame(() => {
+                updateAllArrows();
+            });
+
+            // 5. 語音朗讀與自動播放推進
+            if (isAutoPlaying) {
+                speakCurrentStep(() => {
+                    if (!isAutoPlaying) return;
+                    if (currentStep < steps.length - 1) {
+                        goToStep(currentStep + 1, true);
+                    } else {
+                        stopAutoPlay(false);
+                    }
+                });
+            } else if (shouldSpeak) {
+                speakCurrentStep(null);
+            } else {
+                cancelSpeech();
+            }
+        }
+
+        function startAutoPlay() {
+            if (isAutoPlaying) return;
+            isAutoPlaying = true;
+            autoPlayIcon.textContent = '⏸';
+            autoPlayText.textContent = '暫停播放';
+            btnAutoPlay.classList.replace('bg-blue-600', 'bg-amber-600');
+            btnAutoPlay.classList.replace('hover:bg-blue-500', 'hover:bg-amber-500');
+            autoPlayIndicator.classList.remove('hidden');
+
+            const steps = getStepsArray();
+            const startIdx = (currentStep === steps.length - 1) ? 0 : currentStep;
+            goToStep(startIdx, true);
+        }
+
+        function stopAutoPlay(cancelAudio = true) {
+            isAutoPlaying = false;
+            if (autoPlayTimer) {
+                clearTimeout(autoPlayTimer);
+                autoPlayTimer = null;
+            }
+            if (cancelAudio) cancelSpeech();
+            autoPlayIcon.textContent = '▶';
+            autoPlayText.textContent = '語音自動播放';
+            btnAutoPlay.classList.replace('bg-amber-600', 'bg-blue-600');
+            btnAutoPlay.classList.replace('hover:bg-amber-500', 'hover:bg-blue-500');
+            autoPlayIndicator.classList.add('hidden');
+        }
+
+        function toggleVoice() {
+            isVoiceEnabled = !isVoiceEnabled;
+            if (isVoiceEnabled) {
+                voiceIcon.textContent = '🔊';
+                voiceLabel.textContent = '語音已開啟';
+                btnVoiceToggle.className = 'px-3 py-1.5 rounded-xl border border-emerald-800 bg-emerald-950/70 text-emerald-300 hover:bg-emerald-900/70 transition text-xs font-semibold flex items-center gap-2 cursor-pointer';
+                speakCurrentStep(isAutoPlaying ? () => {
+                    const steps = getStepsArray();
+                    if (isAutoPlaying && currentStep < steps.length - 1) {
+                        goToStep(currentStep + 1, true);
+                    } else {
+                        stopAutoPlay(false);
+                    }
+                } : null);
+            } else {
+                voiceIcon.textContent = '🔇';
+                voiceLabel.textContent = '語音已靜音';
+                btnVoiceToggle.className = 'px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 hover:bg-slate-700 transition text-xs font-semibold flex items-center gap-2 cursor-pointer';
+                cancelSpeech();
+                if (isAutoPlaying) {
+                    const steps = getStepsArray();
+                    autoPlayTimer = setTimeout(() => {
+                        if (isAutoPlaying && currentStep < steps.length - 1) {
+                            goToStep(currentStep + 1, true);
+                        } else {
+                            stopAutoPlay(false);
+                        }
+                    }, 4200);
+                }
+            }
+        }
+
+        // 綁定分頁切換與按鈕事件
+        document.getElementById('tab-full').addEventListener('click', () => switchMode('full', false));
+        document.getElementById('tab-strtok').addEventListener('click', () => switchMode('strtok', false));
+        document.getElementById('tab-qsort').addEventListener('click', () => switchMode('qsort', false));
+
+        btnPrev.addEventListener('click', () => { stopAutoPlay(); goToStep(currentStep - 1, true); });
+        btnNext.addEventListener('click', () => { stopAutoPlay(); goToStep(currentStep + 1, true); });
+        btnAutoPlay.addEventListener('click', () => { isAutoPlaying ? stopAutoPlay() : startAutoPlay(); });
+        btnReset.addEventListener('click', () => { stopAutoPlay(); goToStep(0, false); });
+        btnVoiceToggle.addEventListener('click', toggleVoice);
+        btnReplayVoice.addEventListener('click', () => { !isVoiceEnabled ? toggleVoice() : speakCurrentStep(null); });
+
+        rateSelect.addEventListener('change', (e) => {
+            speechRate = parseFloat(e.target.value);
+            if (synth && synth.speaking) {
+                speakCurrentStep(isAutoPlaying ? () => {
+                    const steps = getStepsArray();
+                    if (isAutoPlaying && currentStep < steps.length - 1) {
+                        goToStep(currentStep + 1, true);
+                    } else {
+                        stopAutoPlay(false);
+                    }
+                } : null);
+            }
+        });
+
+        voiceSelect.addEventListener('change', (e) => {
+            const idx = parseInt(e.target.value, 10);
+            if (!isNaN(idx) && availableVoices[idx]) {
+                selectedVoice = availableVoices[idx];
+                if (isVoiceEnabled) speakCurrentStep(null);
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (['SELECT', 'INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+            if (e.key === 'ArrowLeft') { e.preventDefault(); stopAutoPlay(); goToStep(currentStep - 1, true); }
+            else if (e.key === 'ArrowRight') { e.preventDefault(); stopAutoPlay(); goToStep(currentStep + 1, true); }
+            else if (e.key === ' ') { e.preventDefault(); isAutoPlaying ? stopAutoPlay() : startAutoPlay(); }
+            else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); !isVoiceEnabled ? toggleVoice() : speakCurrentStep(null); }
+        });
+
+        window.addEventListener('resize', () => requestAnimationFrame(updateAllArrows));
+        window.addEventListener('beforeunload', () => { if (synth) synth.cancel(); });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            buildCodePanel();
+            initStagePills();
+            goToStep(0, false);
+            setTimeout(updateAllArrows, 150);
+        });
+    </script>
+</body>
+</html>
