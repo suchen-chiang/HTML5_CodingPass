@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>P1610 以酒會友 — 指標遞迴與字典序組合語音教學動畫</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', 'Noto Sans TC', sans-serif;
+      background-color: #f1f5f9;
+      color: #0f172a;
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+    }
+    input, textarea, select {
+      user-select: text;
+      -webkit-user-select: text;
+      -moz-user-select: text;
+      -ms-user-select: text;
+    }
+    .no-copy-zone {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+      -moz-user-select: none !important;
+      -ms-user-select: none !important;
+    }
+    .font-mono-code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .mem-cell {
+      transition: all 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    @keyframes popHighlight {
+      0% { transform: scale(1.16); background-color: #fef08a; border-color: #eab308; box-shadow: 0 0 18px rgba(234, 179, 8, 0.55); }
+      100% { transform: scale(1); }
+    }
+    @keyframes pruneFlash {
+      0% { transform: scale(1.18) rotate(-2deg); background-color: #fecaca; border-color: #dc2626; box-shadow: 0 0 20px rgba(220, 38, 38, 0.65); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+    @keyframes outputFlash {
+      0% { transform: scale(1.15); background-color: #a7f3d0; border-color: #059669; box-shadow: 0 0 22px rgba(16, 185, 129, 0.7); }
+      100% { transform: scale(1); }
+    }
+    .anim-pop    { animation: popHighlight 0.6s ease-out; }
+    .anim-prune  { animation: pruneFlash 0.75s ease-out; }
+    .anim-output { animation: outputFlash 0.8s ease-out; }
+
+    @keyframes soundWave {
+      0%, 100% { height: 5px; }
+      50% { height: 17px; }
+    }
+    .wave-bar { animation: soundWave 0.7s ease-in-out infinite; }
+    .wave-bar:nth-child(2) { animation-delay: 0.15s; }
+    .wave-bar:nth-child(3) { animation-delay: 0.3s; }
+    .wave-bar:nth-child(4) { animation-delay: 0.45s; }
+
+    ::-webkit-scrollbar { height: 8px; width: 8px; }
+    ::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 9999px; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- 頂部簡報與語音控制列 -->
+  <header class="bg-slate-900 text-white shadow-lg border-b border-slate-800 sticky top-0 z-30">
+    <div class="max-w-[1540px] mx-auto px-4 py-3 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-rose-500 via-amber-500 to-indigo-600 flex items-center justify-center text-xl shadow-inner border border-white/20">
+          🍷
+        </div>
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="px-2.5 py-0.5 text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-400/30 rounded-full">第 16 章 指標遞迴專題</span>
+            <h1 class="text-lg sm:text-xl font-black tracking-tight">P1610 以酒會友 — 指標遞迴與字典序組合動畫</h1>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">酒窖庫存統計壓縮 • <code class="text-amber-300">combin(winename+1, qty+1, k-i, ct+i)</code> 指標前進與回溯追蹤</p>
+        </div>
+      </div>
+
+      <!-- 播放與語音控制群 -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button onclick="resetCurrent()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/70 hover:text-rose-200 hover:border-rose-700 text-xs sm:text-sm font-bold border border-slate-700 transition">
+          ⏮ 重置
+        </button>
+
+        <button id="btn-prev" onclick="prevStep()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-xs sm:text-sm font-bold border border-slate-700 flex items-center gap-1 transition">
+          <span>◀</span> 上一步
+        </button>
+
+        <button id="btn-next" onclick="nextStep()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-xs sm:text-sm font-bold border border-slate-700 flex items-center gap-1 transition">
+          下一步 <span>▶</span>
+        </button>
+
+        <button id="btn-auto" onclick="toggleAutoPlay()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow flex items-center gap-1.5 transition min-w-[144px] justify-center">
+          <span id="auto-icon">🔊</span> <span id="auto-text">自動連續播放</span>
+        </button>
+
+        <button id="btn-replay" onclick="replayVoice()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-amber-950/80 hover:text-amber-200 hover:border-amber-600 text-xs sm:text-sm font-bold border border-slate-700 flex items-center gap-1.5 transition" title="重新朗讀本步驟語音">
+          <span>🔁</span> 重播本步語音
+        </button>
+
+        <!-- 語音開關與語速 -->
+        <div class="flex items-center bg-slate-800 rounded-xl p-1 border border-slate-700 gap-1">
+          <button id="btn-voice-toggle" onclick="toggleVoiceMute()" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white flex items-center gap-1 transition">
+            <span id="voice-icon">🎙️</span> <span id="voice-label">開啟</span>
+          </button>
+          <div class="h-4 w-[1px] bg-slate-700 mx-0.5"></div>
+          <button onclick="setVoiceRate(0.8)" id="rate-08" class="rate-btn px-2 py-1 text-xs rounded-lg text-slate-300 hover:bg-slate-700 font-mono-code">0.8x</button>
+          <button onclick="setVoiceRate(1.0)" id="rate-10" class="rate-btn px-2 py-1 text-xs rounded-lg bg-amber-500 text-slate-950 font-bold font-mono-code">1.0x</button>
+          <button onclick="setVoiceRate(1.2)" id="rate-12" class="rate-btn px-2 py-1 text-xs rounded-lg text-slate-300 hover:bg-slate-700 font-mono-code">1.2x</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 主分頁切換與測資控制列 -->
+    <div class="bg-slate-800/95 border-t border-slate-700/80">
+      <div class="max-w-[1540px] mx-auto px-4 py-2.5 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2.5">
+        <!-- 兩大核心學習分頁 -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="switchMainTab('concept')" id="mtab-concept" class="mtab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold bg-amber-400 text-slate-950 shadow transition flex items-center gap-1.5">
+            <span>📖</span>
+            <span>一、題目白話解說與核心思路</span>
+          </button>
+          <button onclick="switchMainTab('trace')" id="mtab-trace" class="mtab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold text-slate-200 bg-slate-700/80 hover:bg-slate-700 border border-slate-600 transition flex items-center gap-1.5">
+            <span>⚙️</span>
+            <span>二、指標遞迴程式執行追蹤</span>
+          </button>
+        </div>
+
+        <!-- 測資預設與自訂模擬器（於追蹤模式顯示） -->
+        <div id="trace-controls" class="hidden flex-wrap items-center gap-2">
+          <span class="text-xs font-bold text-slate-400">範例測資：</span>
+          <button onclick="selectPreset('sample1')" id="preset-sample1" class="preset-btn px-3 py-1.5 rounded-xl text-xs font-mono-code font-extrabold bg-white text-slate-900 shadow transition">
+            範例 1："abbaaac", k=2 (5組)
+          </button>
+          <button onclick="selectPreset('sample2')" id="preset-sample2" class="preset-btn px-3 py-1.5 rounded-xl text-xs font-mono-code font-extrabold text-slate-200 bg-slate-700/70 hover:bg-slate-700 border border-slate-600 transition">
+            範例 2："abbaaac", k=3 (6組)
+          </button>
+
+          <div class="flex items-center gap-1.5 bg-slate-900/90 border border-slate-700 rounded-xl px-2.5 py-1 font-mono-code text-xs">
+            <span class="text-slate-400 font-sans font-bold">自訂：</span>
+            <input id="in-winestr" type="text" maxlength="12" value="cabba" placeholder="小寫字母" class="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-amber-300 font-bold w-24 focus:outline-none focus:border-amber-400" />
+            <label class="text-slate-300 flex items-center gap-1">k=<input id="in-k" type="number" min="1" max="5" value="2" class="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-emerald-300 font-bold w-11 focus:outline-none" /></label>
+            <button onclick="applyCustomWine()" class="px-2.5 py-0.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-sans font-bold transition">
+              套用
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 進度條與語音狀態列 -->
+  <div class="bg-slate-200/90 border-b border-slate-300">
+    <div class="max-w-[1540px] mx-auto px-4 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span id="mode-indicator-badge" class="px-2.5 py-0.5 rounded-full font-extrabold bg-amber-500 text-slate-950">
+          當前單元：題目白話解說與字典序原理（共 5 步）
+        </span>
+        <div id="speaking-indicator" class="hidden items-center gap-1.5 text-emerald-700 font-extrabold bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300">
+          <div class="flex items-end gap-0.5 h-3.5">
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+          </div>
+          <span>語音講解中...</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <span class="hidden md:inline text-slate-500">快捷鍵：<kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px]">←</kbd> <kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px]">→</kbd> 單步 / <kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px]">Space</kbd> 播放暫停</span>
+        <span>步驟進度：<strong id="step-counter" class="text-indigo-700 font-mono-code text-sm">1 / 5</strong></span>
+        <div class="w-28 sm:w-40 h-2 bg-slate-300 rounded-full overflow-hidden">
+          <div id="progress-bar" class="h-full bg-indigo-600 transition-all duration-200" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =======================================================================
+       視圖一：題目白話解說與核心思路（無程式碼圖解版）
+       ======================================================================= -->
+  <section id="view-concept" class="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-5">
+    <!-- 步驟標題與字幕卡片 -->
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 relative overflow-hidden">
+      <div id="c-accent" class="absolute left-0 top-0 bottom-0 w-2 bg-amber-500"></div>
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+        <div class="flex items-center gap-2.5">
+          <span id="c-badge" class="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-900">觀念 1 / 5</span>
+          <h2 id="c-title" class="text-lg sm:text-2xl font-black text-slate-900">載入中...</h2>
+        </div>
+        <button onclick="switchMainTab('trace')" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow transition">
+          懂了！前往看程式碼指標追蹤 ➔
+        </button>
+      </div>
+
+      <p id="c-desc" class="text-base sm:text-lg text-slate-700 leading-relaxed font-medium">
+        載入說明...
+      </p>
+
+      <div class="mt-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-2.5">
+        <span class="text-lg leading-none mt-0.5">💡</span>
+        <div id="c-tip" class="text-xs sm:text-sm text-amber-950 font-semibold leading-snug">
+          提示
+        </div>
+      </div>
+    </div>
+
+    <!-- 圖解主舞台 -->
+    <div id="c-stage" class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-7 flex-1 flex flex-col justify-between gap-6">
+      <!-- 由 JS 動態渲染酒窖整理與字典序決策樹圖解 -->
+    </div>
+  </section>
+
+  <!-- =======================================================================
+       視圖二：指標遞迴程式執行追蹤（左側記憶體與呼叫堆疊 + 右側唯讀程式碼）
+       ======================================================================= -->
+  <main id="view-trace" class="hidden flex-1 max-w-[1540px] w-full mx-auto p-4 sm:p-5 grid-cols-1 xl:grid-cols-12 gap-5">
+
+    <!-- 左側 7 欄：視覺化舞台 -->
+    <div class="xl:col-span-7 flex flex-col gap-4">
+
+      <!-- 1. 步驟講解與語音字幕卡片 -->
+      <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 relative overflow-hidden">
+        <div id="t-accent" class="absolute left-0 top-0 bottom-0 w-2 bg-indigo-600"></div>
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+          <div class="flex items-center gap-2.5">
+            <span id="t-badge" class="px-3 py-1 rounded-full text-xs font-extrabold bg-indigo-100 text-indigo-800">執行追蹤</span>
+            <h2 id="t-title" class="text-lg sm:text-2xl font-black text-slate-900">載入中...</h2>
+          </div>
+          <span id="t-call-pill" class="px-3 py-1 rounded-xl bg-slate-900 text-amber-300 font-mono-code text-xs sm:text-sm font-bold">
+            combin(wine, qty, 2)
+          </span>
+        </div>
+
+        <p id="t-desc" class="text-base sm:text-lg text-slate-700 leading-relaxed font-medium">
+          請點擊「下一步」開始追蹤指標遞迴過程。
+        </p>
+
+        <div class="mt-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-2.5">
+          <span class="text-lg leading-none mt-0.5">💡</span>
+          <div id="t-tip" class="text-xs sm:text-sm text-amber-950 font-semibold leading-snug">
+            教學提示
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 平行陣列 wine[] 與 qty[] 指標舞台（含前處理 stock[26]） -->
+      <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4 sm:p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+            <h3 id="arr-section-title" class="text-sm sm:text-base font-black text-slate-900">
+              酒窖庫存平行陣列 <code class="font-mono-code text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded">wine[]</code> &amp; <code class="font-mono-code text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">qty[]</code>
+            </h3>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+            <span class="px-2 py-0.5 rounded bg-rose-600 text-white font-mono-code">🍷 winename 指標</span>
+            <span class="px-2 py-0.5 rounded bg-indigo-600 text-white font-mono-code">📦 qty 指標</span>
+          </div>
+        </div>
+
+        <div id="parallel-arrays-container" class="overflow-x-auto pb-2">
+          <!-- 由 JS 動態渲染前處理或平行陣列指標 -->
+        </div>
+      </div>
+
+      <!-- 3. static char res[32] 組合緩衝區與寫入指標 ct -->
+      <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4 sm:p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <h3 class="text-sm sm:text-base font-black text-slate-900">
+              靜態輸出緩衝區 <code class="font-mono-code text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg">static char res[32]</code>
+            </h3>
+            <span class="text-xs text-slate-500">（所有遞迴層共用同一塊記憶體，靠指標 <code class="font-mono-code font-bold text-slate-700">ct</code> 決定寫入起點）</span>
+          </div>
+          <span class="px-2.5 py-0.5 rounded bg-emerald-600 text-white text-[11px] font-mono-code font-extrabold">✍️ ct (當前寫入游標)</span>
+        </div>
+
+        <div class="overflow-x-auto pb-2">
+          <div id="res-grid" class="inline-flex gap-2 pt-11 pb-2 px-1 min-w-full justify-start">
+            <!-- 由 JS 動態渲染 res[0..k+1] -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. 下方雙欄：左側遞迴呼叫堆疊 (Call Stack) + 右側終端機輸出 (cout) -->
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-4 flex-1">
+        <!-- 呼叫堆疊 -->
+        <div class="md:col-span-7 bg-white rounded-3xl shadow-sm border border-slate-200 p-4 flex flex-col">
+          <h3 class="text-xs sm:text-sm font-black text-slate-800 mb-2 flex items-center justify-between">
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-purple-600"></span> 遞迴呼叫堆疊（Call Stack）</span>
+            <span id="stack-depth-pill" class="font-mono-code text-[11px] px-2 py-0.5 rounded bg-purple-100 text-purple-800">深度：1</span>
+          </h3>
+          <div id="call-stack-list" class="space-y-1.5 font-mono-code text-xs flex-1 overflow-y-auto max-h-40">
+            <!-- 由 JS 動態渲染呼叫堆疊 -->
+          </div>
+        </div>
+
+        <!-- 終端機輸出列表 -->
+        <div class="md:col-span-5 bg-slate-900 text-white rounded-3xl shadow-sm border border-slate-800 p-4 flex flex-col">
+          <h3 class="text-xs sm:text-sm font-black text-emerald-400 mb-2 flex items-center justify-between">
+            <span>🖥️ 終端機輸出（cout）</span>
+            <span id="output-count-pill" class="font-mono-code text-[11px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">已輸出 0 組</span>
+          </h3>
+          <div id="output-console" class="font-mono-code text-xs sm:text-sm space-y-1 flex-1 overflow-y-auto max-h-40 bg-slate-950/70 rounded-xl p-2.5 border border-slate-800">
+            <span class="text-slate-500 italic">尚未產生組合輸出...</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 右側 5 欄：完整 P1610 程式碼同步高亮視窗（鎖定防選取複製） -->
+    <div id="code-window-wrapper" class="no-copy-zone xl:col-span-5 bg-slate-900 text-slate-100 rounded-3xl shadow-lg border border-slate-800 flex flex-col overflow-hidden">
+      <div class="px-4 py-3 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <div class="flex gap-1.5">
+            <span class="w-3 h-3 rounded-full bg-rose-500"></span>
+            <span class="w-3 h-3 rounded-full bg-amber-400"></span>
+            <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+          </div>
+          <span class="font-mono-code text-xs sm:text-sm font-bold text-slate-300 ml-2">P1610-以酒會友.cpp 執行追蹤</span>
+        </div>
+        <span class="px-2 py-0.5 rounded-md bg-rose-950/80 border border-rose-700/60 text-rose-300 text-[11px] font-bold">🔒 唯讀展示（禁止選取複製）</span>
+      </div>
+
+      <div id="code-panel" class="no-copy-zone p-3 sm:p-4 overflow-y-auto font-mono-code text-xs sm:text-[13px] leading-6 flex-1 select-none">
+        <!-- 程式碼由 JS 動態渲染 -->
+      </div>
+
+      <!-- 底部三大指標精髓總結 -->
+      <div class="p-3.5 bg-slate-950/90 border-t border-slate-800 text-xs text-slate-300 space-y-1.5">
+        <div class="font-bold text-amber-300 text-xs sm:text-sm">📌 本題指標遞迴三大精髓：</div>
+        <div class="p-2 rounded-xl bg-slate-900 border border-slate-800">
+          <span class="text-amber-400 font-bold">① 字典序保證：</span>迴圈 <code class="text-amber-300">for(int i=min(*qty, k); i&gt;=0; i--)</code> 由多到少拿取，優先填入字典序較小的字元，天然排出字典序！
+        </div>
+        <div class="p-2 rounded-xl bg-slate-900 border border-slate-800">
+          <span class="text-rose-400 font-bold">② 關鍵剪枝：</span><code class="text-rose-300">if((winename[1])=='\0' &amp;&amp; k-i) return;</code> 當已經是最後一種酒且還剩 <code class="text-rose-300">k - i &gt; 0</code> 瓶沒湊滿時，直接提早結束，避免無效遞迴！
+        </div>
+        <div class="p-2 rounded-xl bg-slate-900 border border-slate-800">
+          <span class="text-emerald-400 font-bold">③ 指標切片前進：</span>傳入 <code class="text-emerald-300">winename+1</code>、<code class="text-emerald-300">qty+1</code> 切換到下一種酒，並把寫入指標推進 <code class="text-emerald-300">ct+i</code>，回溯時原層的 <code class="text-emerald-300">ct</code> 維持原位直接覆蓋，無需手動清除！
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 防複製溫和提示氣泡 -->
+  <div id="copy-lock-toast" class="fixed bottom-5 right-5 z-50 pointer-events-none opacity-0 translate-y-2 transition-all duration-200 bg-slate-900/95 text-amber-300 border border-amber-500/40 px-4 py-2.5 rounded-2xl shadow-xl text-xs sm:text-sm font-bold flex items-center gap-2">
+    <span>🔒</span>
+    <span>教學展示模式：程式碼視窗已鎖定無法選取複製</span>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. 完整 C++ 程式碼定義（與教師提供之程式碼完全一致）
+    // =========================================================================
+    const CPP_LINES = [
+      { ln: 1,  code: '// P1610-以酒會友' },
+      { ln: 2,  code: '#include <bits/stdc++.h>' },
+      { ln: 3,  code: '' },
+      { ln: 4,  code: 'using namespace std;' },
+      { ln: 5,  code: '' },
+      { ln: 6,  code: 'void combin(char* winename, int* qty, int k, char* ct=NULL)' },
+      { ln: 7,  code: '{' },
+      { ln: 8,  code: '    static char res[32];' },
+      { ln: 9,  code: '    if(ct==NULL) ct=res;' },
+      { ln: 10, code: '    if(k==0){' },
+      { ln: 11, code: '        *ct = \'\\0\';' },
+      { ln: 12, code: '        cout << res << endl;' },
+      { ln: 13, code: '        return;' },
+      { ln: 14, code: '    }' },
+      { ln: 15, code: '    for(int i=min(*qty, k); i>=0; i--){' },
+      { ln: 16, code: '        if((winename[1])==\'\\0\' && k-i) return;' },
+      { ln: 17, code: '        for(int j=0; j<i; j++) ct[j] = *winename;' },
+      { ln: 18, code: '        combin(winename+1, qty+1, k-i, ct+i);' },
+      { ln: 19, code: '    }' },
+      { ln: 20, code: '}' },
+      { ln: 21, code: '' },
+      { ln: 22, code: 'int main()' },
+      { ln: 23, code: '{' },
+      { ln: 24, code: '    char winestr[128];' },
+      { ln: 25, code: '    int k, first=1;;' },
+      { ln: 26, code: '' },
+      { ln: 27, code: '    while(cin >> winestr >> k){' },
+      { ln: 28, code: '        cout << (--first ? "\\n" : "");' },
+      { ln: 29, code: '        int stock[26]={0};' },
+      { ln: 30, code: '        char c, *p = winestr;' },
+      { ln: 31, code: '        while(c=*p++) stock[c-\'a\']++;' },
+      { ln: 32, code: '        char wine[27]={0};' },
+      { ln: 33, code: '        int qty[26];' },
+      { ln: 34, code: '        for(int i=0, inx=0; i<26; i++)' },
+      { ln: 35, code: '            if(stock[i]){' },
+      { ln: 36, code: '                wine[inx] = \'a\'+i;' },
+      { ln: 37, code: '                qty[inx++] = stock[i];' },
+      { ln: 38, code: '            }' },
+      { ln: 39, code: '        combin(wine, qty, k);' },
+      { ln: 40, code: '    }' },
+      { ln: 41, code: '}' }
+    ];
+
+    function renderCodePanel() {
+      const panel = document.getElementById('code-panel');
+      panel.innerHTML = CPP_LINES.map(item => {
+        const safe = item.code
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        return `
+          <div id="p1610-ln-${item.ln}" class="flex items-start px-2 py-0.5 rounded-lg transition-colors duration-150">
+            <span class="w-7 shrink-0 text-slate-500 text-right pr-3 select-none">${item.ln}</span>
+            <pre class="whitespace-pre overflow-x-auto flex-1">${safe || ' '}</pre>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // =========================================================================
+    // 2. 分頁一：題目白話解說與核心思路（5 步互動圖解劇本）
+    // =========================================================================
+    const CONCEPT_STEPS = [
+      {
+        badge: '觀念 1 / 5 • 題意白話理解',
+        title: '把雜亂的輸入字串，整理成「酒窖庫存清單」',
+        desc: '題目給定一串小寫英文字母，例如 "abbaaac"，每個字母代表一瓶酒。我們根本不在乎原本字母排列的先後順序，只在乎「每種酒各有幾瓶」！',
+        voice: '歡迎來到 P1610 以酒會友。首先我們來看題目意思：輸入的字串 a b b a a a c 代表考克鐵爾先生酒窖裡的藏酒，每個字母是一瓶酒。我們先把相同字母歸類，算出 a 有 4 瓶、b 有 2 瓶、c 有 1 瓶。',
+        tip: '註：題目 PDF 敘述範例文字中將 c 誤植為 2 瓶，但從範例輸出不含 cc 可確認 "abbaaac" 的 c 實際上為 1 瓶。',
+        accent: 'amber',
+        stageMode: 'tally'
+      },
+      {
+        badge: '觀念 2 / 5 • 字典序排序規則',
+        title: '為什麼要按字母順序（a → b → c）整理庫存？',
+        desc: '題目要求所有組合必須依照「字典序（Lexicographical Order）」輸出。只要我們事先把庫存按字母順序排好（a 在最前、b 其次、c 在後），接下來依序挑選時就不會亂掉！',
+        voice: '第二步，因為題目規定所有組合必須按照字典序印出，所以我們按照 a、b、c 的英文字母順序，把種類與瓶數整理成兩排整齊的庫存表。',
+        tip: '在程式中，只要開一個大小 26 的計數陣列 stock[26]，從 index 0 (' + "'a'" + ') 掃描到 index 25 (' + "'z'" + ')，天然就會依照字母順序排列！',
+        accent: 'indigo',
+        stageMode: 'sorted_cellar'
+      },
+      {
+        badge: '觀念 3 / 5 • 核心難點（為什麼要由多到少拿？）',
+        title: '決策關鍵：每種酒都要從「最多能拿幾瓶」遞減試到「0 瓶」！',
+        desc: '假設要挑 k = 2 瓶酒，先看字典序最小的 \'a\'：如果先拿 2 瓶 \'a\'，得到 "aa"；再退一步只拿 1 瓶 \'a\'，剩下的 1 瓶交給後面的 \'b\' 或 \'c\'，就會依序得到 "ab"、"ac"！',
+        voice: '這題最聰明的設計在這裡：面對每一種酒，我們不是從 0 瓶開始往上加，而是從最多能拿的瓶數開始往下減！先拿兩瓶 a 得到 a a，再減為拿一瓶 a 搭配後面的 b 或 c，得到 a b 與 a c，你會發現它們剛好就是嚴格的字典序！',
+        tip: '思考看看：如果先拿 0 瓶 \'a\' 再拿 2 瓶 \'a\'，印出來的順序就會變成 bb, bc, ab, ac, aa，完全顛倒了！所以必須由多到少遞減！',
+        accent: 'emerald',
+        stageMode: 'tree_step1'
+      },
+      {
+        badge: '觀念 4 / 5 • 繼續遞減展開剩餘分支',
+        title: '當 \'a\' 拿 0 瓶時，把全部 2 瓶的名額交給後面的 \'b\' 與 \'c\'',
+        desc: '當輪到 \'a\' 拿 0 瓶時，剩下 k = 2 瓶全交給 \'b\'：先拿 2 瓶 \'b\' 得到 "bb"；再減為拿 1 瓶 \'b\' 配 1 瓶 \'c\' 得到 "bc"。當 \'b\' 拿 0 瓶時，\'c\' 庫存只有 1 瓶湊不滿 2 瓶，直接剪枝淘汰！',
+        voice: '接著當 a 拿 0 瓶時，剩餘兩個名額全交給後面的酒。b 拿兩瓶得到 b b，b 拿一瓶配 c 一瓶得到 b c。最後 b 拿 0 瓶時，只剩最後一種酒 c 且庫存只有 1 瓶，根本湊不滿 2 瓶，直接提早剪枝返回！',
+        tip: '這就是程式碼中 if ((winename[1]) == \'\\0\' && k - i) return; 的幾何意義：已經是最後一種酒了，拿完 i 瓶後還缺 k - i 瓶，絕對不可能湊齊！',
+        accent: 'purple',
+        stageMode: 'tree_full'
+      },
+      {
+        badge: '觀念 5 / 5 • 指標如何優雅實現這個過程？',
+        title: '不用每次複製陣列！靠指標位移直接「前進」與「回溯」',
+        desc: '在 C++ 中，進入下一種酒只需傳入 winename + 1 與 qty + 1；而在輸出緩衝區 res 中填入 i 個字元後，只要傳入 ct + i 就能接續寫入後方字元，返回時原層的 ct 完全不受影響！',
+        voice: '理解了組合樹之後，我們來看看 C 語言指標如何用短短十幾行完成它：切換下一種酒只要把指標加一，寫入位置只要把指標加上 i。現在請點擊上方分頁二，觀看完整的程式指標追蹤動畫！',
+        tip: '準備好了嗎？點擊右上角「二、指標遞迴程式執行追蹤」即可觀看每一行程式碼的記憶體動態變化！',
+        accent: 'sky',
+        stageMode: 'pointer_bridge'
+      }
+    ];
+
+    function renderConceptStage(mode) {
+      const stage = document.getElementById('c-stage');
+      if (mode === 'tally') {
+        stage.innerHTML = `
+          <div class="space-y-6">
+            <div>
+              <div class="text-xs font-extrabold text-slate-500 uppercase tracking-wider mb-2">1. 原始輸入字串（雜亂無序）</div>
+              <div class="flex flex-wrap gap-2 justify-center sm:justify-start">
+                ${'abbaaac'.split('').map((ch, idx) => {
+                  const colors = ch === 'a' ? 'bg-rose-100 border-rose-400 text-rose-900'
+                               : ch === 'b' ? 'bg-sky-100 border-sky-400 text-sky-900'
+                               : 'bg-emerald-100 border-emerald-400 text-emerald-900';
+                  return `
+                    <div class="w-12 h-14 rounded-2xl border-2 ${colors} flex flex-col items-center justify-center font-mono-code shadow-xs">
+                      <span class="text-xl font-black">${ch}</span>
+                      <span class="text-[10px] opacity-70">[${idx}]</span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
+            <div class="flex items-center justify-center text-slate-400 font-bold text-sm">
+              ⬇ 統計每種字母出現總次數（忽略原本順序） ⬇
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div class="rounded-2xl border-2 border-rose-300 bg-rose-50/70 p-4 flex items-center justify-between">
+                <div>
+                  <div class="text-xs font-bold text-rose-700">種類 'a'</div>
+                  <div class="text-2xl font-black text-rose-950 mt-0.5">4 瓶</div>
+                </div>
+                <div class="text-3xl">🍷🍷🍷🍷</div>
+              </div>
+              <div class="rounded-2xl border-2 border-sky-300 bg-sky-50/70 p-4 flex items-center justify-between">
+                <div>
+                  <div class="text-xs font-bold text-sky-700">種類 'b'</div>
+                  <div class="text-2xl font-black text-sky-950 mt-0.5">2 瓶</div>
+                </div>
+                <div class="text-3xl">🍾🍾</div>
+              </div>
+              <div class="rounded-2xl border-2 border-emerald-300 bg-emerald-50/70 p-4 flex items-center justify-between">
+                <div>
+                  <div class="text-xs font-bold text-emerald-700">種類 'c'</div>
+                  <div class="text-2xl font-black text-emerald-950 mt-0.5">1 瓶</div>
+                </div>
+                <div class="text-3xl">🥂</div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (mode === 'sorted_cellar') {
+        stage.innerHTML = `
+          <div class="space-y-5">
+            <div class="text-sm font-bold text-slate-700">透過 <code class="font-mono-code bg-slate-100 px-1.5 py-0.5 rounded">stock[26]</code> 從 'a' 到 'z' 掃描壓縮，得到兩排字典序平行陣列：</div>
+            <div class="overflow-x-auto">
+              <table class="w-full max-w-xl mx-auto border-collapse font-mono-code text-center">
+                <thead>
+                  <tr class="text-xs text-slate-500">
+                    <th class="p-2 text-left">陣列索引</th>
+                    <th class="p-2">[0]</th>
+                    <th class="p-2">[1]</th>
+                    <th class="p-2">[2]</th>
+                    <th class="p-2">[3]</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="p-3 text-left font-sans font-extrabold text-rose-700 bg-rose-50 rounded-l-xl border border-rose-200">wine[]（酒名）</td>
+                    <td class="p-3 text-xl font-black bg-white border border-slate-300 text-rose-700">'a'</td>
+                    <td class="p-3 text-xl font-black bg-white border border-slate-300 text-sky-700">'b'</td>
+                    <td class="p-3 text-xl font-black bg-white border border-slate-300 text-emerald-700">'c'</td>
+                    <td class="p-3 text-base font-bold bg-rose-50 border border-rose-300 text-rose-600 rounded-r-xl">'\\0'</td>
+                  </tr>
+                  <tr><td colspan="5" class="h-2"></td></tr>
+                  <tr>
+                    <td class="p-3 text-left font-sans font-extrabold text-indigo-700 bg-indigo-50 rounded-l-xl border border-indigo-200">qty[]（庫存瓶數）</td>
+                    <td class="p-3 text-xl font-black bg-white border border-slate-300 text-slate-900">4</td>
+                    <td class="p-3 text-xl font-black bg-white border border-slate-300 text-slate-900">2</td>
+                    <td class="p-3 text-xl font-black bg-white border border-slate-300 text-slate-900">1</td>
+                    <td class="p-3 text-xs text-slate-400 bg-slate-50 border border-slate-200 rounded-r-xl">(結束)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="text-center text-xs sm:text-sm text-slate-600 font-semibold">
+              酒名嚴格滿足 <code class="font-mono-code text-indigo-700">'a' &lt; 'b' &lt; 'c'</code>，只要按照此順序決定每種酒拿幾瓶，字典序就成功了一半！
+            </div>
+          </div>
+        `;
+      } else if (mode === 'tree_step1' || mode === 'tree_full') {
+        const showBranch0 = (mode === 'tree_full');
+        stage.innerHTML = `
+          <div class="space-y-4">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <span class="text-sm font-black text-slate-800">決策樹展開（目標挑選 k = 2 瓶）：先決定 'a' 拿幾瓶（i = 2 → 1 → 0）</span>
+              <span class="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 text-xs font-bold">輸出順序由上而下 = 嚴格字典序</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono-code">
+              <!-- 分支 i = 2 -->
+              <div class="rounded-2xl border-2 border-emerald-400 bg-emerald-50/50 p-4 flex flex-col justify-between">
+                <div>
+                  <div class="text-xs font-sans font-extrabold text-emerald-800 bg-emerald-200/70 inline-block px-2 py-0.5 rounded">第 1 輪：'a' 拿 i = 2 瓶</div>
+                  <div class="mt-2 text-sm text-slate-700 font-sans">已填入 <strong class="text-rose-700">"aa"</strong>，剩餘需求 <strong class="text-indigo-700">k = 0</strong>！</div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-emerald-200 flex items-center justify-between">
+                  <span class="text-xs font-sans text-emerald-800 font-bold">觸發 k == 0 輸出：</span>
+                  <span class="px-3 py-1 rounded-xl bg-slate-900 text-emerald-400 font-black text-base">1. "aa"</span>
+                </div>
+              </div>
+
+              <!-- 分支 i = 1 -->
+              <div class="rounded-2xl border-2 border-amber-400 bg-amber-50/50 p-4 flex flex-col justify-between">
+                <div>
+                  <div class="text-xs font-sans font-extrabold text-amber-900 bg-amber-200/80 inline-block px-2 py-0.5 rounded">第 2 輪：'a' 拿 i = 1 瓶</div>
+                  <div class="mt-2 text-sm text-slate-700 font-sans">先填入 <strong class="text-rose-700">"a"</strong>，剩餘 <strong class="text-indigo-700">k = 1</strong> 交給後面的 'b' 與 'c'：</div>
+                  <ul class="mt-2 text-xs font-sans text-slate-600 space-y-1">
+                    <li>• 'b' 拿 1 瓶 → 湊滿 k=0</li>
+                    <li>• 'b' 拿 0 瓶 → 'c' 拿 1 瓶 → 湊滿 k=0</li>
+                  </ul>
+                </div>
+                <div class="mt-4 pt-3 border-t border-amber-200 flex items-center justify-between gap-2">
+                  <span class="text-xs font-sans text-amber-900 font-bold">依序輸出：</span>
+                  <div class="flex gap-1.5">
+                    <span class="px-2.5 py-1 rounded-xl bg-slate-900 text-emerald-400 font-black text-sm">2. "ab"</span>
+                    <span class="px-2.5 py-1 rounded-xl bg-slate-900 text-emerald-400 font-black text-sm">3. "ac"</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 分支 i = 0 -->
+              <div class="rounded-2xl border-2 ${showBranch0 ? 'border-purple-400 bg-purple-50/50' : 'border-dashed border-slate-300 bg-slate-50 opacity-50'} p-4 flex flex-col justify-between">
+                <div>
+                  <div class="text-xs font-sans font-extrabold text-purple-900 bg-purple-200/80 inline-block px-2 py-0.5 rounded">第 3 輪：'a' 拿 i = 0 瓶</div>
+                  <div class="mt-2 text-sm text-slate-700 font-sans">開頭不放 'a'，剩餘 <strong class="text-indigo-700">k = 2</strong> 全交給 'b' 與 'c'：</div>
+                  <ul class="mt-2 text-xs font-sans text-slate-600 space-y-1">
+                    <li>• 'b' 拿 2 瓶 → 湊滿 k=0</li>
+                    <li>• 'b' 拿 1 瓶 + 'c' 拿 1 瓶 → 湊滿 k=0</li>
+                    <li class="text-rose-600 font-bold">• 'b' 拿 0 瓶 → 剩最後一種 'c'(1瓶) 不夠 2 瓶 ➔ 剪枝返回！</li>
+                  </ul>
+                </div>
+                <div class="mt-4 pt-3 border-t border-purple-200 flex items-center justify-between gap-2">
+                  <span class="text-xs font-sans text-purple-900 font-bold">依序輸出：</span>
+                  <div class="flex gap-1.5">
+                    <span class="px-2.5 py-1 rounded-xl bg-slate-900 text-emerald-400 font-black text-sm">4. "bb"</span>
+                    <span class="px-2.5 py-1 rounded-xl bg-slate-900 text-emerald-400 font-black text-sm">5. "bc"</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        stage.innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+            <div class="rounded-2xl border-2 border-rose-300 bg-rose-50 p-4">
+              <div class="font-mono-code font-black text-rose-700 text-base">winename + 1</div>
+              <div class="font-mono-code font-black text-indigo-700 text-base">qty + 1</div>
+              <p class="text-xs sm:text-sm text-slate-700 mt-2 font-medium">指標往右前進 1 格，直接切換到「下一種酒」與「它的庫存」，完全不需要複製陣列！</p>
+            </div>
+            <div class="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4">
+              <div class="font-mono-code font-black text-emerald-800 text-base">ct + i</div>
+              <p class="text-xs sm:text-sm text-slate-700 mt-2 font-medium">在 res 寫入 i 個字元後，把寫入指標往右推進 i 格傳給下一層；返回本層時，本層的 ct 依然停在原位，下次迴圈直接覆蓋即可！</p>
+            </div>
+            <div class="rounded-2xl border-2 border-purple-300 bg-purple-50 p-4">
+              <div class="font-mono-code font-black text-purple-800 text-sm">winename[1] == '\\0' &amp;&amp; k - i</div>
+              <p class="text-xs sm:text-sm text-slate-700 mt-2 font-medium">「提前剪枝」神器：winename[1] 是 '\\0' 代表已經站在最後一種酒上，若拿完 i 瓶後還差 k - i 瓶沒湊齊，直接 return！</p>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // =========================================================================
+    // 3. 分頁二：指標遞迴程式執行追蹤引擎
+    // =========================================================================
+    function generateTraceSteps(winestr, k) {
+      const steps = [];
+      const stock = Array(26).fill(0);
+      for (let idx = 0; idx < winestr.length; idx++) {
+        const code = winestr.charCodeAt(idx) - 97;
+        if (code >= 0 && code < 26) stock[code]++;
+      }
+
+      const wine = [];
+      const qty = [];
+      for (let i = 0; i < 26; i++) {
+        if (stock[i] > 0) {
+          wine.push(String.fromCharCode(97 + i));
+          qty.push(stock[i]);
+        }
+      }
+      wine.push('\0'); // 字串結尾
+
+      const resArr = Array(k + 2).fill(null);
+      const outputs = [];
+      const callStack = [];
+
+      const pushTrace = (cfg) => {
+        steps.push({
+          phase: cfg.phase || 'recurse',
+          winestr,
+          kTotal: k,
+          stock: stock.slice(),
+          wine: wine.slice(),
+          qty: qty.slice(),
+          wineIdx: cfg.wineIdx !== undefined ? cfg.wineIdx : 0,
+          ctIdx: cfg.ctIdx !== undefined ? cfg.ctIdx : 0,
+          remK: cfg.remK !== undefined ? cfg.remK : k,
+          resArr: resArr.slice(),
+          resHighlightRange: cfg.resHighlightRange || null,
+          resHighlightType: cfg.resHighlightType || 'pop',
+          callStack: callStack.map(item => ({ ...item })),
+          outputs: outputs.slice(),
+          badge: cfg.badge,
+          title: cfg.title,
+          desc: cfg.desc,
+          voice: cfg.voice,
+          tip: cfg.tip,
+          accent: cfg.accent || 'indigo',
+          callLabel: cfg.callLabel || `combin(wine, qty, ${k})`,
+          codeLines: cfg.codeLines || []
+        });
+      };
+
+      // 步驟 1：前處理統計與壓縮
+      pushTrace({
+        phase: 'preprocess',
+        wineIdx: 0,
+        ctIdx: 0,
+        remK: k,
+        badge: '前處理階段 • 統計與壓縮平行陣列',
+        title: `掃描 "${winestr}" 統計 stock[26]，壓縮建立 wine[] 與 qty[]`,
+        desc: `main() 透過指標 p 掃描 "${winestr}" 統計每種字母出現次數，再從 'a' 到 'z' 壓縮成兩排平行陣列：wine = "${wine.slice(0, -1).join('')}"，對應庫存 qty = [${qty.join(', ')}]。準備呼叫 combin(wine, qty, ${k})！`,
+        voice: `首先在 main 函式中，利用指標 p 掃描輸入字串 ${winestr.split('').join(' ')}，統計出每種酒的瓶數，並按字母順序壓縮建立 wine 與 qty 兩個平行陣列，接著呼叫 combin 函式。`,
+        tip: 'wine 陣列最後一格放有 \'\\0\'，讓 combin() 可以隨時用 winename[1] == \'\\0\' 判斷是否已經是最後一種酒！',
+        accent: 'amber',
+        callLabel: `combin(wine, qty, ${k})`,
+        codeLines: [29, 30, 31, 34, 35, 36, 37, 39]
+      });
+
+      // 遞迴模擬器（完全對照 combin 程式碼）
+      function simulateCombin(wIdx, remK, ctIdx) {
+        const curWineChar = wine[wIdx] === '\0' ? '\\0' : wine[wIdx];
+        const curQty = wIdx < qty.length ? qty[wIdx] : 0;
+        const callDesc = `combin(wine+${wIdx} ['${curWineChar}'], qty+${wIdx} [${curQty}], k=${remK}, res+${ctIdx})`;
+        callStack.push({ label: callDesc, depth: callStack.length + 1 });
+
+        // Base case: if (k == 0)
+        if (remK === 0) {
+          resArr[ctIdx] = '\0';
+          const formedStr = resArr.slice(0, ctIdx).join('');
+          outputs.push(formedStr);
+
+          pushTrace({
+            wineIdx: wIdx,
+            ctIdx,
+            remK: 0,
+            resHighlightRange: { start: 0, end: ctIdx },
+            resHighlightType: 'output',
+            badge: `終止條件 (k == 0) • 🎉 輸出第 ${outputs.length} 組結果`,
+            title: `*ct = '\\0' 封尾，cout << res 印出 "${formedStr}"！`,
+            desc: `剩餘需求 k == 0 成立！在當前寫入游標 ct（res[${ctIdx}]）寫入字串結束符號 '\\0'，印出完整組合 "${formedStr}"，並 return 返回上一層遞迴！`,
+            voice: `剩餘瓶數 k 等於 0，在指標 ct 所指的索引 ${ctIdx} 寫入結束符號斜線零，印出組合 ${formedStr.split('').join(' ')}，然後返回上一層！`,
+            tip: 'static char res[32] 宣告為靜態陣列，所有遞迴呼叫都共用同一塊記憶體空間，因此只需在尾巴補上 \'\\0\' 就能直接印出整串結果！',
+            accent: 'emerald',
+            callLabel: callDesc,
+            codeLines: [8, 9, 10, 11, 12, 13]
+          });
+
+          callStack.pop();
+          return;
+        }
+
+        const maxTake = Math.min(curQty, remK);
+        for (let i = maxTake; i >= 0; i--) {
+          const isLastWine = (wine[wIdx + 1] === '\0');
+          const remainAfterTake = remK - i;
+
+          // 剪枝檢查：if((winename[1])=='\0' && k-i) return;
+          if (isLastWine && remainAfterTake > 0) {
+            pushTrace({
+              wineIdx: wIdx,
+              ctIdx,
+              remK,
+              resHighlightRange: { start: ctIdx, end: ctIdx },
+              resHighlightType: 'prune',
+              badge: `✂️ 觸發剪枝條件 • 直接 return`,
+              title: `winename[1] == '\\0' 且 k - i = ${remainAfterTake} > 0，庫存不足直接返回！`,
+              desc: `目前站在最後一種酒 '${curWineChar}'（庫存 ${curQty} 瓶），嘗試拿 i = ${i} 瓶後還差 ${remainAfterTake} 瓶沒湊滿，後面已經沒有其他種酒了！剪枝條件成立，直接 return 避免無效計算！`,
+              voice: `注意看剪枝條件！目前已經是最後一種酒 ${curWineChar}，只拿 ${i} 瓶的話還差 ${remainAfterTake} 瓶湊不滿，直接提早返回，節省運算！`,
+              tip: `因為 i 是由大到小遞減（${maxTake} → 0），一旦 i 小到讓最後一種酒湊不滿 k，後面更小的 i 也絕對湊不滿，所以直接 return 整層結束！`,
+              accent: 'rose',
+              callLabel: callDesc,
+              codeLines: [15, 16]
+            });
+            callStack.pop();
+            return;
+          }
+
+          // 填入 i 個 *winename 到 ct[0 .. i-1]
+          for (let j = 0; j < i; j++) {
+            resArr[ctIdx + j] = curWineChar;
+          }
+
+          pushTrace({
+            wineIdx: wIdx,
+            ctIdx,
+            remK,
+            resHighlightRange: i > 0 ? { start: ctIdx, end: ctIdx + i - 1 } : null,
+            resHighlightType: 'pop',
+            badge: `選擇拿取數量 • i = ${i} 瓶 '${curWineChar}'`,
+            title: i > 0
+              ? `在 ct[0..${i - 1}] 填入 ${i} 個 '${curWineChar}'，準備指標前進遞迴`
+              : `決定拿 i = 0 瓶 '${curWineChar}'（不寫入），直接切換下一種酒`,
+            desc: i > 0
+              ? `迴圈嘗試拿 i = ${i} 瓶 '${curWineChar}'，在 res[${ctIdx}..${ctIdx + i - 1}] 填入 '${curWineChar}'。接著傳入 winename+1、qty+1、k-${i}=${remainAfterTake}、ct+${i} 進入下一層遞迴！`
+              : `迴圈遞減至 i = 0，本層不拿 '${curWineChar}'（ct 指標不前進），直接傳入 winename+1、qty+1、k=${remainAfterTake}、ct+0 交給下一種酒決定！`,
+            voice: i > 0
+              ? `針對酒類 ${curWineChar}，嘗試拿 ${i} 瓶，在緩衝區寫入 ${i} 個 ${curWineChar}，接著指標前進，進入下一層遞迴。`
+              : `輪到拿 0 瓶 ${curWineChar}，不寫入字元，直接把指標移向下一種酒。`,
+            tip: i > 0
+              ? `觀察寫入指標 ct + ${i}：把指標往右推進 ${i} 格傳給下一層，等下一層返回後，本層原本的 ct 依然指在 [${ctIdx}]！`
+              : `當 i = 0 時，ct + 0 讓下一層直接從原本的 res[${ctIdx}] 開始覆蓋寫入，完全不需要手動清除舊字元！`,
+            accent: 'indigo',
+            callLabel: callDesc,
+            codeLines: i > 0 ? [15, 16, 17, 18] : [15, 16, 18]
+          });
+
+          simulateCombin(wIdx + 1, remainAfterTake, ctIdx + i);
+        }
+
+        callStack.pop();
+      }
+
+      simulateCombin(0, k, 0);
+
+      // 最終完成步驟
+      pushTrace({
+        phase: 'done',
+        wineIdx: 0,
+        ctIdx: 0,
+        remK: k,
+        badge: '執行完畢 • 全部字典序組合輸出完成',
+        title: `combin() 全部遞迴返回，共輸出 ${outputs.length} 組字典序組合！`,
+        desc: `整棵決策樹已走訪完畢，終端機依字典序輸出了全部 ${outputs.length} 組組合：${outputs.map(s => `"${s}"`).join('、')}。`,
+        voice: `全部遞迴呼叫都已結束返回，總共依字典序印出了 ${outputs.length} 組不重複的酒類組合！`,
+        tip: '您可以點擊上方切換「範例 2 (k=3)」或輸入自訂小寫字母字串與 k 值，繼續觀察指標遞迴變化！',
+        accent: 'emerald',
+        callLabel: 'main() 執行完成',
+        codeLines: [39, 40]
+      });
+
+      return steps;
+    }
+
+    // =========================================================================
+    // 4. 語音合成引擎 (Web Speech API - zh-TW)
+    // =========================================================================
+    let voiceEnabled = true;
+    let voiceRate = 1.0;
+    let preferredVoice = null;
+    let isAutoPlaying = false;
+    let fallbackTimer = null;
+
+    function loadVoices() {
+      if (!('speechSynthesis' in window)) return;
+      const voices = window.speechSynthesis.getVoices();
+      preferredVoice =
+        voices.find(v => v.lang === 'zh-TW' && v.name.includes('Google')) ||
+        voices.find(v => v.lang === 'zh-TW' || v.lang === 'zh_TW') ||
+        voices.find(v => v.lang.startsWith('zh'));
+    }
+
+    if ('speechSynthesis' in window) {
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    function stopSpeech() {
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      setSpeakingUI(false);
+    }
+
+    function setSpeakingUI(speaking) {
+      const ind = document.getElementById('speaking-indicator');
+      if (speaking) {
+        ind.classList.remove('hidden');
+        ind.classList.add('flex');
+      } else {
+        ind.classList.add('hidden');
+        ind.classList.remove('flex');
+      }
+    }
+
+    function speakText(text, onFinishCallback) {
+      stopSpeech();
+
+      if (!voiceEnabled || !('speechSynthesis' in window)) {
+        if (onFinishCallback) {
+          fallbackTimer = setTimeout(onFinishCallback, 2500 / voiceRate);
+        }
+        return;
+      }
+
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'zh-TW';
+      if (preferredVoice) utter.voice = preferredVoice;
+      utter.rate = voiceRate;
+      utter.pitch = 1.0;
+
+      utter.onstart = () => setSpeakingUI(true);
+      utter.onend = () => {
+        setSpeakingUI(false);
+        if (onFinishCallback) {
+          fallbackTimer = setTimeout(onFinishCallback, 550);
+        }
+      };
+      utter.onerror = () => {
+        setSpeakingUI(false);
+        if (onFinishCallback) {
+          fallbackTimer = setTimeout(onFinishCallback, 1200);
+        }
+      };
+
+      window.speechSynthesis.speak(utter);
+    }
+
+    function toggleVoiceMute() {
+      voiceEnabled = !voiceEnabled;
+      const btn = document.getElementById('btn-voice-toggle');
+      const icon = document.getElementById('voice-icon');
+      const label = document.getElementById('voice-label');
+
+      if (voiceEnabled) {
+        btn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white flex items-center gap-1 transition';
+        icon.textContent = '🎙️';
+        label.textContent = '開啟';
+        replayVoice();
+      } else {
+        stopSpeech();
+        btn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-300 flex items-center gap-1 transition';
+        icon.textContent = '🔇';
+        label.textContent = '靜音';
+      }
+    }
+
+    function setVoiceRate(rate) {
+      voiceRate = rate;
+      document.querySelectorAll('.rate-btn').forEach(b => {
+        b.className = 'rate-btn px-2 py-1 text-xs rounded-lg text-slate-300 hover:bg-slate-700 font-mono-code';
+      });
+      const id = rate === 0.8 ? 'rate-08' : (rate === 1.0 ? 'rate-10' : 'rate-12');
+      document.getElementById(id).className = 'rate-btn px-2 py-1 text-xs rounded-lg bg-amber-500 text-slate-950 font-bold font-mono-code';
+
+      if (voiceEnabled) {
+        replayVoice();
+      }
+    }
+
+    // =========================================================================
+    // 5. 雙分頁狀態管理與 DOM 渲染引擎
+    // =========================================================================
+    let activeMainTab = 'concept'; // 'concept' | 'trace'
+    let conceptIdx = 0;
+    let traceSteps = [];
+    let traceIdx = 0;
+    let currentWinestr = 'abbaaac';
+    let currentK = 2;
+
+    function switchMainTab(tab, shouldSpeak = true) {
+      stopAutoPlay();
+      stopSpeech();
+      activeMainTab = tab;
+
+      const btnConcept = document.getElementById('mtab-concept');
+      const btnTrace = document.getElementById('mtab-trace');
+      const viewConcept = document.getElementById('view-concept');
+      const viewTrace = document.getElementById('view-trace');
+      const traceControls = document.getElementById('trace-controls');
+
+      if (tab === 'concept') {
+        btnConcept.className = 'mtab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold bg-amber-400 text-slate-950 shadow transition flex items-center gap-1.5';
+        btnTrace.className = 'mtab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold text-slate-200 bg-slate-700/80 hover:bg-slate-700 border border-slate-600 transition flex items-center gap-1.5';
+        viewConcept.classList.remove('hidden');
+        viewTrace.classList.add('hidden');
+        viewTrace.classList.remove('grid');
+        traceControls.classList.add('hidden');
+        traceControls.classList.remove('flex');
+        renderConcept(shouldSpeak);
+      } else {
+        btnTrace.className = 'mtab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold bg-amber-400 text-slate-950 shadow transition flex items-center gap-1.5';
+        btnConcept.className = 'mtab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold text-slate-200 bg-slate-700/80 hover:bg-slate-700 border border-slate-600 transition flex items-center gap-1.5';
+        viewConcept.classList.add('hidden');
+        viewTrace.classList.remove('hidden');
+        viewTrace.classList.add('grid');
+        traceControls.classList.remove('hidden');
+        traceControls.classList.add('flex');
+        renderTrace(shouldSpeak);
+      }
+    }
+
+    function selectPreset(id) {
+      stopAutoPlay();
+      stopSpeech();
+      ['sample1', 'sample2'].forEach(pid => {
+        const el = document.getElementById(`preset-${pid}`);
+        if (!el) return;
+        el.className = pid === id
+          ? 'preset-btn px-3 py-1.5 rounded-xl text-xs font-mono-code font-extrabold bg-white text-slate-900 shadow transition'
+          : 'preset-btn px-3 py-1.5 rounded-xl text-xs font-mono-code font-extrabold text-slate-200 bg-slate-700/70 hover:bg-slate-700 border border-slate-600 transition';
+      });
+
+      currentWinestr = 'abbaaac';
+      currentK = (id === 'sample1') ? 2 : 3;
+      document.getElementById('in-winestr').value = currentWinestr;
+      document.getElementById('in-k').value = currentK;
+
+      traceSteps = generateTraceSteps(currentWinestr, currentK);
+      traceIdx = 0;
+      renderTrace(true);
+    }
+
+    function applyCustomWine() {
+      stopAutoPlay();
+      stopSpeech();
+      const raw = document.getElementById('in-winestr').value.toLowerCase().replace(/[^a-z]/g, '');
+      if (!raw) return;
+      let kVal = parseInt(document.getElementById('in-k').value, 10);
+      if (isNaN(kVal) || kVal < 1) kVal = 1;
+      if (kVal > Math.min(5, raw.length)) kVal = Math.min(5, raw.length);
+
+      document.getElementById('in-winestr').value = raw;
+      document.getElementById('in-k').value = kVal;
+
+      ['sample1', 'sample2'].forEach(pid => {
+        const el = document.getElementById(`preset-${pid}`);
+        if (el) el.className = 'preset-btn px-3 py-1.5 rounded-xl text-xs font-mono-code font-extrabold text-slate-200 bg-slate-700/70 hover:bg-slate-700 border border-slate-600 transition';
+      });
+
+      currentWinestr = raw;
+      currentK = kVal;
+      traceSteps = generateTraceSteps(currentWinestr, currentK);
+      traceIdx = 0;
+      renderTrace(true);
+    }
+
+    function renderConcept(shouldSpeak = true) {
+      const s = CONCEPT_STEPS[conceptIdx];
+      document.getElementById('mode-indicator-badge').textContent = `當前單元：題目白話解說與字典序原理（共 ${CONCEPT_STEPS.length} 步）`;
+      document.getElementById('step-counter').textContent = `${conceptIdx + 1} / ${CONCEPT_STEPS.length}`;
+      const pct = CONCEPT_STEPS.length > 1 ? (conceptIdx / (CONCEPT_STEPS.length - 1)) * 100 : 100;
+      document.getElementById('progress-bar').style.width = `${pct}%`;
+
+      document.getElementById('btn-prev').disabled = conceptIdx === 0;
+      document.getElementById('btn-next').disabled = conceptIdx === CONCEPT_STEPS.length - 1;
+
+      const accentMap = { amber: 'bg-amber-500', indigo: 'bg-indigo-600', emerald: 'bg-emerald-600', purple: 'bg-purple-600', sky: 'bg-sky-600' };
+      document.getElementById('c-accent').className = `absolute left-0 top-0 bottom-0 w-2 ${accentMap[s.accent] || 'bg-amber-500'}`;
+      document.getElementById('c-badge').textContent = s.badge;
+      document.getElementById('c-title').textContent = s.title;
+      document.getElementById('c-desc').textContent = s.desc;
+      document.getElementById('c-tip').textContent = s.tip;
+
+      renderConceptStage(s.stageMode);
+
+      if (shouldSpeak) {
+        speakText(s.voice, () => {
+          if (isAutoPlaying) {
+            if (conceptIdx < CONCEPT_STEPS.length - 1) {
+              conceptIdx++;
+              renderConcept(true);
+            } else {
+              stopAutoPlay();
+            }
+          }
+        });
+      }
+    }
+
+    function renderTrace(shouldSpeak = true) {
+      if (!traceSteps.length) return;
+      const s = traceSteps[traceIdx];
+
+      document.getElementById('mode-indicator-badge').textContent = `當前單元：指標遞迴執行追蹤 ("${s.winestr}", k=${s.kTotal})`;
+      document.getElementById('step-counter').textContent = `${traceIdx + 1} / ${traceSteps.length}`;
+      const pct = traceSteps.length > 1 ? (traceIdx / (traceSteps.length - 1)) * 100 : 100;
+      document.getElementById('progress-bar').style.width = `${pct}%`;
+
+      document.getElementById('btn-prev').disabled = traceIdx === 0;
+      document.getElementById('btn-next').disabled = traceIdx === traceSteps.length - 1;
+
+      const accentMap = { amber: 'bg-amber-500', indigo: 'bg-indigo-600', emerald: 'bg-emerald-600', rose: 'bg-rose-600' };
+      document.getElementById('t-accent').className = `absolute left-0 top-0 bottom-0 w-2 ${accentMap[s.accent] || 'bg-indigo-600'}`;
+      document.getElementById('t-badge').textContent = s.badge;
+      document.getElementById('t-title').textContent = s.title;
+      document.getElementById('t-call-pill').textContent = s.callLabel;
+      document.getElementById('t-desc').textContent = s.desc;
+      document.getElementById('t-tip').textContent = s.tip;
+
+      // 渲染平行陣列 wine[] 與 qty[]
+      const parContainer = document.getElementById('parallel-arrays-container');
+      const wineCells = s.wine.map((ch, idx) => {
+        const isNull = (ch === '\0');
+        const isPtrHere = (s.wineIdx === idx);
+        const wAddr = `0x20${idx.toString(16).toUpperCase().padStart(2, '0')}`;
+        const qAddr = `0x30${(idx * 4).toString(16).toUpperCase().padStart(2, '0')}`;
+
+        const wBoxCls = isPtrHere
+          ? 'anim-pop border-rose-600 bg-rose-50 ring-2 ring-rose-300'
+          : (isNull ? 'border-rose-300 bg-rose-50/40' : 'border-slate-300 bg-white');
+        const qBoxCls = isPtrHere && !isNull
+          ? 'anim-pop border-indigo-600 bg-indigo-50 ring-2 ring-indigo-300'
+          : 'border-slate-300 bg-white';
+
+        const topPtr = isPtrHere
+          ? `<div class="mb-1 flex flex-col items-center"><span class="px-2 py-0.5 rounded bg-rose-600 text-white text-[10px] font-mono-code font-extrabold shadow whitespace-nowrap">winename</span><span class="text-rose-600 text-[10px] leading-none font-black">▼</span></div>`
+          : `<div class="h-6"></div>`;
+
+        const botPtr = isPtrHere && !isNull
+          ? `<div class="mt-1 flex flex-col items-center"><span class="text-indigo-600 text-[10px] leading-none font-black">▲</span><span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-mono-code font-extrabold shadow whitespace-nowrap">qty</span></div>`
+          : `<div class="h-6"></div>`;
+
+        return `
+          <div class="flex flex-col items-center min-w-[68px]">
+            ${topPtr}
+            <div class="mem-cell w-14 h-12 rounded-xl border-2 ${wBoxCls} flex flex-col items-center justify-center font-mono-code">
+              <span class="text-base font-black ${isNull ? 'text-rose-600' : 'text-slate-900'}">${isNull ? '\\0' : `'${ch}'`}</span>
+              <span class="text-[8px] text-slate-400">${wAddr}</span>
+            </div>
+            <div class="my-1 text-[10px] font-mono-code text-slate-500 font-bold">[${idx}]</div>
+            <div class="mem-cell w-14 h-12 rounded-xl border-2 ${qBoxCls} flex flex-col items-center justify-center font-mono-code">
+              <span class="text-base font-black ${isNull ? 'text-slate-300' : 'text-indigo-800'}">${isNull ? '-' : s.qty[idx]}</span>
+              <span class="text-[8px] text-slate-400">${isNull ? '' : qAddr}</span>
+            </div>
+            ${botPtr}
+          </div>
+        `;
+      }).join('');
+
+      parContainer.innerHTML = `
+        <div class="inline-flex items-center gap-2.5 px-2 min-w-full justify-start sm:justify-center">
+          <div class="flex flex-col justify-between h-32 py-6 pr-2 text-right font-mono-code text-xs font-extrabold">
+            <span class="text-rose-700">char wine[] ➔</span>
+            <span class="text-indigo-700">int qty[] &nbsp;➔</span>
+          </div>
+          ${wineCells}
+        </div>
+      `;
+
+      // 渲染 static char res[32] 緩衝區
+      const resGrid = document.getElementById('res-grid');
+      resGrid.innerHTML = s.resArr.map((ch, idx) => {
+        const addr = `0x50${idx.toString(16).toUpperCase().padStart(2, '0')}`;
+        const isCtHere = (s.ctIdx === idx);
+        const inRange = s.resHighlightRange && idx >= s.resHighlightRange.start && idx <= s.resHighlightRange.end;
+
+        let cellCls = 'border-slate-300 bg-white';
+        if (ch === null) cellCls = 'border-slate-200 bg-slate-50/70';
+        if (inRange) {
+          if (s.resHighlightType === 'output') cellCls = 'anim-output border-emerald-600 bg-emerald-100 ring-2 ring-emerald-400';
+          else if (s.resHighlightType === 'prune') cellCls = 'anim-prune border-rose-600 bg-rose-100 ring-2 ring-rose-300';
+          else cellCls = 'anim-pop border-amber-500 bg-amber-100 ring-2 ring-amber-300';
+        }
+
+        const charHtml = ch === null
+          ? `<span class="text-slate-300 font-bold">·</span>`
+          : (ch === '\0'
+              ? `<span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-black text-xs border border-rose-300">\\0</span>`
+              : `<span class="text-slate-900 font-black text-lg">${ch}</span>`);
+
+        const ctOverlay = isCtHere
+          ? `<div class="absolute -top-10 flex flex-col items-center"><span class="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-mono-code font-extrabold shadow whitespace-nowrap">ct</span><span class="text-emerald-600 text-[10px] leading-none font-black">▼</span></div>`
+          : '';
+
+        return `
+          <div class="relative flex flex-col items-center">
+            ${ctOverlay}
+            <div class="mem-cell w-12 h-13 rounded-xl border-2 ${cellCls} flex items-center justify-center font-mono-code shadow-2xs">
+              ${charHtml}
+            </div>
+            <span class="text-[10px] font-mono-code text-slate-700 font-bold mt-1">res[${idx}]</span>
+            <span class="text-[8px] font-mono-code text-slate-400">${addr}</span>
+          </div>
+        `;
+      }).join('');
+
+      // 渲染呼叫堆疊 Call Stack
+      document.getElementById('stack-depth-pill').textContent = `深度：${s.callStack.length}`;
+      const stackList = document.getElementById('call-stack-list');
+      if (s.callStack.length === 0) {
+        stackList.innerHTML = `<div class="text-slate-400 italic py-2">目前無進行中的 combin() 遞迴呼叫</div>`;
+      } else {
+        stackList.innerHTML = s.callStack.slice().reverse().map((frame, i) => {
+          const isTop = (i === 0);
+          return `
+            <div class="px-2.5 py-1.5 rounded-xl border ${isTop ? 'bg-purple-50 border-purple-400 text-purple-950 font-extrabold' : 'bg-slate-50 border-slate-200 text-slate-600'} flex items-center justify-between gap-2">
+              <span class="truncate">${frame.label}</span>
+              <span class="text-[10px] shrink-0 px-1.5 py-0.5 rounded ${isTop ? 'bg-purple-600 text-white' : 'bg-slate-200 text-slate-600'}">L${frame.depth}</span>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // 渲染終端機輸出
+      document.getElementById('output-count-pill').textContent = `已輸出 ${s.outputs.length} 組`;
+      const consoleBox = document.getElementById('output-console');
+      if (s.outputs.length === 0) {
+        consoleBox.innerHTML = `<span class="text-slate-500 italic">尚未產生組合輸出...</span>`;
+      } else {
+        consoleBox.innerHTML = s.outputs.map((out, idx) => `
+          <div class="flex items-center justify-between px-2 py-0.5 rounded ${idx === s.outputs.length - 1 ? 'bg-emerald-500/20 text-emerald-300 font-black' : 'text-slate-300'}">
+            <span>${idx + 1}. "${out}"</span>
+            ${idx === s.outputs.length - 1 ? '<span class="text-[10px] text-emerald-400">◀ 最新</span>' : ''}
+          </div>
+        `).join('');
+        consoleBox.scrollTop = consoleBox.scrollHeight;
+      }
+
+      // 右側程式碼行同步高亮
+      CPP_LINES.forEach(item => {
+        const el = document.getElementById(`p1610-ln-${item.ln}`);
+        if (!el) return;
+        if (s.codeLines.includes(item.ln)) {
+          el.className = 'flex items-start px-2 py-0.5 rounded-lg bg-amber-400/20 border-l-4 border-amber-400 text-amber-200 font-bold transition-colors duration-150';
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+          el.className = 'flex items-start px-2 py-0.5 rounded-lg text-slate-300 hover:bg-slate-800/60 transition-colors duration-150';
+        }
+      });
+
+      if (shouldSpeak) {
+        speakText(s.voice, () => {
+          if (isAutoPlaying) {
+            if (traceIdx < traceSteps.length - 1) {
+              traceIdx++;
+              renderTrace(true);
+            } else {
+              stopAutoPlay();
+            }
+          }
+        });
+      }
+    }
+
+    // =========================================================================
+    // 6. 統一播放控制與防複製保護
+    // =========================================================================
+    function nextStep() {
+      stopAutoPlay();
+      if (activeMainTab === 'concept') {
+        if (conceptIdx < CONCEPT_STEPS.length - 1) {
+          conceptIdx++;
+          renderConcept(true);
+        }
+      } else {
+        if (traceIdx < traceSteps.length - 1) {
+          traceIdx++;
+          renderTrace(true);
+        }
+      }
+    }
+
+    function prevStep() {
+      stopAutoPlay();
+      if (activeMainTab === 'concept') {
+        if (conceptIdx > 0) {
+          conceptIdx--;
+          renderConcept(true);
+        }
+      } else {
+        if (traceIdx > 0) {
+          traceIdx--;
+          renderTrace(true);
+        }
+      }
+    }
+
+    function resetCurrent() {
+      stopAutoPlay();
+      stopSpeech();
+      if (activeMainTab === 'concept') {
+        conceptIdx = 0;
+        renderConcept(false);
+      } else {
+        traceIdx = 0;
+        renderTrace(false);
+      }
+    }
+
+    function replayVoice() {
+      if (activeMainTab === 'concept') {
+        const s = CONCEPT_STEPS[conceptIdx];
+        if (s) speakText(s.voice, isAutoPlaying ? () => {
+          if (conceptIdx < CONCEPT_STEPS.length - 1) { conceptIdx++; renderConcept(true); }
+          else stopAutoPlay();
+        } : null);
+      } else {
+        const s = traceSteps[traceIdx];
+        if (s) speakText(s.voice, isAutoPlaying ? () => {
+          if (traceIdx < traceSteps.length - 1) { traceIdx++; renderTrace(true); }
+          else stopAutoPlay();
+        } : null);
+      }
+    }
+
+    function startAutoPlay() {
+      isAutoPlaying = true;
+      document.getElementById('auto-icon').textContent = '⏸';
+      document.getElementById('auto-text').textContent = '暫停連續播放';
+      document.getElementById('btn-auto').classList.replace('bg-indigo-600', 'bg-amber-600');
+      document.getElementById('btn-auto').classList.replace('hover:bg-indigo-500', 'hover:bg-amber-500');
+
+      if (activeMainTab === 'concept') {
+        if (conceptIdx >= CONCEPT_STEPS.length - 1) conceptIdx = 0;
+        renderConcept(true);
+      } else {
+        if (traceIdx >= traceSteps.length - 1) traceIdx = 0;
+        renderTrace(true);
+      }
+    }
+
+    function stopAutoPlay() {
+      isAutoPlaying = false;
+      document.getElementById('auto-icon').textContent = '🔊';
+      document.getElementById('auto-text').textContent = '自動連續播放';
+      document.getElementById('btn-auto').classList.replace('bg-amber-600', 'bg-indigo-600');
+      document.getElementById('btn-auto').classList.replace('hover:bg-amber-500', 'hover:bg-indigo-500');
+    }
+
+    function toggleAutoPlay() {
+      if (isAutoPlaying) {
+        stopAutoPlay();
+        stopSpeech();
+      } else {
+        startAutoPlay();
+      }
+    }
+
+    // 防選取、防複製與快捷鍵保護
+    let toastTimer = null;
+    function showCopyLockToast() {
+      const toast = document.getElementById('copy-lock-toast');
+      if (!toast) return;
+      toast.classList.remove('opacity-0', 'translate-y-2');
+      toast.classList.add('opacity-100', 'translate-y-0');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', 'translate-y-2');
+      }, 2000);
+    }
+
+    function setupAntiCopyProtection() {
+      const isEditable = (target) => target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+
+      document.addEventListener('contextmenu', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+          showCopyLockToast();
+        }
+      });
+
+      document.addEventListener('selectstart', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+        }
+      });
+
+      document.addEventListener('copy', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+          showCopyLockToast();
+        }
+      });
+
+      document.addEventListener('cut', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+          showCopyLockToast();
+        }
+      });
+
+      document.addEventListener('dragstart', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+        }
+      });
+    }
+
+    window.addEventListener('keydown', (e) => {
+      const isInputFocused = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+
+      if (!isInputFocused && (e.ctrlKey || e.metaKey)) {
+        const key = e.key.toLowerCase();
+        if (['c', 'a', 'x', 's', 'u'].includes(key)) {
+          e.preventDefault();
+          showCopyLockToast();
+          return;
+        }
+      }
+
+      if (isInputFocused || (document.activeElement && document.activeElement.tagName === 'SELECT')) return;
+      if (e.key === 'ArrowRight') nextStep();
+      if (e.key === 'ArrowLeft') prevStep();
+      if (e.key === ' ') {
+        e.preventDefault();
+        toggleAutoPlay();
+      }
+    });
+
+    window.onload = function () {
+      setupAntiCopyProtection();
+      renderCodePanel();
+      traceSteps = generateTraceSteps(currentWinestr, currentK);
+      switchMainTab('concept', false);
+    };
+  </script>
+</body>
+</html>

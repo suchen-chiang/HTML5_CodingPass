@@ -1,0 +1,1553 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>P1608 記憶體充填 — void* 指標轉型與小端序 Hex Dump 語音教學動畫</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', 'Noto Sans TC', sans-serif;
+      background-color: #f1f5f9;
+      color: #0f172a;
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+    }
+    input, textarea, select {
+      user-select: text;
+      -webkit-user-select: text;
+      -moz-user-select: text;
+      -ms-user-select: text;
+    }
+    .no-copy-zone {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+      -moz-user-select: none !important;
+      -ms-user-select: none !important;
+    }
+    .font-mono-code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .byte-cell {
+      transition: all 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    @keyframes writePulse {
+      0% { transform: scale(1.22); background-color: #fef08a; border-color: #eab308; box-shadow: 0 0 18px rgba(234, 179, 8, 0.65); z-index: 20; }
+      100% { transform: scale(1); }
+    }
+    @keyframes offsetPulse {
+      0% { transform: scale(1.16); background-color: #e2e8f0; border-color: #475569; box-shadow: 0 0 14px rgba(71, 85, 105, 0.45); }
+      100% { transform: scale(1); }
+    }
+    @keyframes dumpPulse {
+      0% { transform: scale(1.18); background-color: #a7f3d0; border-color: #059669; box-shadow: 0 0 18px rgba(16, 185, 129, 0.65); }
+      100% { transform: scale(1); }
+    }
+    .anim-write  { animation: writePulse 0.65s ease-out; }
+    .anim-offset { animation: offsetPulse 0.6s ease-out; }
+    .anim-dump   { animation: dumpPulse 0.65s ease-out; }
+
+    @keyframes soundWave {
+      0%, 100% { height: 5px; }
+      50% { height: 17px; }
+    }
+    .wave-bar { animation: soundWave 0.7s ease-in-out infinite; }
+    .wave-bar:nth-child(2) { animation-delay: 0.15s; }
+    .wave-bar:nth-child(3) { animation-delay: 0.3s; }
+    .wave-bar:nth-child(4) { animation-delay: 0.45s; }
+
+    ::-webkit-scrollbar { height: 8px; width: 8px; }
+    ::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 9999px; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- 頂部控制列 -->
+  <header class="bg-slate-900 text-white shadow-lg border-b border-slate-800 sticky top-0 z-30">
+    <div class="max-w-[1560px] mx-auto px-4 py-3 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-700 flex items-center justify-center font-mono-code font-black text-sm shadow-inner border border-white/20">
+          0xFF
+        </div>
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="px-2.5 py-0.5 text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 rounded-full">第 16 章 void* 指標轉型專題</span>
+            <h1 class="text-lg sm:text-xl font-black tracking-tight">P1608 記憶體充填 — 小端序 (Little-Endian) 與 Hex Dump 動畫</h1>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">無型別指標強制轉型寫入 • <code class="text-amber-300">char / short / int / float / double / string / offset</code> 逐位元組追蹤</p>
+        </div>
+      </div>
+
+      <!-- 播放與語音控制群 -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button onclick="resetCurrent()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/70 hover:text-rose-200 hover:border-rose-700 text-xs sm:text-sm font-bold border border-slate-700 transition">
+          ⏮ 重置
+        </button>
+
+        <button id="btn-prev" onclick="prevStep()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-xs sm:text-sm font-bold border border-slate-700 flex items-center gap-1 transition">
+          <span>◀</span> 上一步
+        </button>
+
+        <button id="btn-next" onclick="nextStep()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-xs sm:text-sm font-bold border border-slate-700 flex items-center gap-1 transition">
+          下一步 <span>▶</span>
+        </button>
+
+        <button id="btn-auto" onclick="toggleAutoPlay()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow flex items-center gap-1.5 transition min-w-[144px] justify-center">
+          <span id="auto-icon">🔊</span> <span id="auto-text">自動連續播放</span>
+        </button>
+
+        <button id="btn-replay" onclick="replayVoice()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-amber-950/80 hover:text-amber-200 hover:border-amber-600 text-xs sm:text-sm font-bold border border-slate-700 flex items-center gap-1.5 transition" title="重新朗讀本步驟語音">
+          <span>🔁</span> 重播本步語音
+        </button>
+
+        <!-- 語音開關與語速 -->
+        <div class="flex items-center bg-slate-800 rounded-xl p-1 border border-slate-700 gap-1">
+          <button id="btn-voice-toggle" onclick="toggleVoiceMute()" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white flex items-center gap-1 transition">
+            <span id="voice-icon">🎙️</span> <span id="voice-label">開啟</span>
+          </button>
+          <div class="h-4 w-[1px] bg-slate-700 mx-0.5"></div>
+          <button onclick="setVoiceRate(0.8)" id="rate-08" class="rate-btn px-2 py-1 text-xs rounded-lg text-slate-300 hover:bg-slate-700 font-mono-code">0.8x</button>
+          <button onclick="setVoiceRate(1.0)" id="rate-10" class="rate-btn px-2 py-1 text-xs rounded-lg bg-amber-500 text-slate-950 font-bold font-mono-code">1.0x</button>
+          <button onclick="setVoiceRate(1.2)" id="rate-12" class="rate-btn px-2 py-1 text-xs rounded-lg text-slate-300 hover:bg-slate-700 font-mono-code">1.2x</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 主分頁切換與測資控制列 -->
+    <div class="bg-slate-800/95 border-t border-slate-700/80">
+      <div class="max-w-[1560px] mx-auto px-4 py-2.5 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2.5">
+        <!-- 兩大核心學習分頁 -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="switchMainTab('concept')" id="mtab-concept" class="mtab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold bg-amber-400 text-slate-950 shadow transition flex items-center gap-1.5">
+            <span>📖</span>
+            <span>一、題目白話解說與小端序圖解</span>
+          </button>
+          <button onclick="switchMainTab('trace')" id="mtab-trace" class="mtab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold text-slate-200 bg-slate-700/80 hover:bg-slate-700 border border-slate-600 transition flex items-center gap-1.5">
+            <span>⚙️</span>
+            <span>二、指標寫入與 16-Byte 記憶體追蹤</span>
+          </button>
+        </div>
+
+        <!-- 測資預設切換（於追蹤模式顯示） -->
+        <div id="trace-controls" class="hidden flex-wrap items-center gap-2">
+          <span class="text-xs font-bold text-slate-400">教學測資：</span>
+          <button onclick="selectPreset('sample')" id="preset-sample" class="preset-btn px-3 py-1.5 rounded-xl text-xs font-extrabold bg-white text-slate-900 shadow transition">
+            題目完整範例 (96 bytes • 含浮點數與字串)
+          </button>
+          <button onclick="selectPreset('quick')" id="preset-quick" class="preset-btn px-3 py-1.5 rounded-xl text-xs font-extrabold text-slate-200 bg-slate-700/70 hover:bg-slate-700 border border-slate-600 transition">
+            精簡入門範例 (32 bytes • 整數/Offset/字串)
+          </button>
+          <button onclick="toggleCustomModal(true)" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-indigo-600 hover:bg-indigo-500 text-white shadow transition">
+            ✏️ 自訂指令模擬
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 進度條與狀態列 -->
+  <div class="bg-slate-200/90 border-b border-slate-300">
+    <div class="max-w-[1560px] mx-auto px-4 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span id="mode-indicator-badge" class="px-2.5 py-0.5 rounded-full font-extrabold bg-amber-500 text-slate-950">
+          當前單元：題目白話解說與小端序圖解（共 5 步）
+        </span>
+        <div id="speaking-indicator" class="hidden items-center gap-1.5 text-emerald-700 font-extrabold bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300">
+          <div class="flex items-end gap-0.5 h-3.5">
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+            <span class="wave-bar w-1 bg-emerald-600 rounded-full"></span>
+          </div>
+          <span>語音講解中...</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <span class="hidden md:inline text-slate-500">快捷鍵：<kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px]">←</kbd> <kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px]">→</kbd> 單步 / <kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px]">Space</kbd> 播放暫停</span>
+        <span>步驟進度：<strong id="step-counter" class="text-indigo-700 font-mono-code text-sm">1 / 5</strong></span>
+        <div class="w-28 sm:w-40 h-2 bg-slate-300 rounded-full overflow-hidden">
+          <div id="progress-bar" class="h-full bg-indigo-600 transition-all duration-200" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =======================================================================
+       視圖一：題目白話解說與小端序圖解
+       ======================================================================= -->
+  <section id="view-concept" class="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-5">
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 relative overflow-hidden">
+      <div id="c-accent" class="absolute left-0 top-0 bottom-0 w-2 bg-amber-500"></div>
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+        <div class="flex items-center gap-2.5">
+          <span id="c-badge" class="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-900">觀念 1 / 5</span>
+          <h2 id="c-title" class="text-lg sm:text-2xl font-black text-slate-900">載入中...</h2>
+        </div>
+        <button onclick="switchMainTab('trace')" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow transition">
+          懂了！前往看 96 Bytes 記憶體動態追蹤 ➔
+        </button>
+      </div>
+
+      <p id="c-desc" class="text-base sm:text-lg text-slate-700 leading-relaxed font-medium">
+        載入說明...
+      </p>
+
+      <div class="mt-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-2.5">
+        <span class="text-lg leading-none mt-0.5">💡</span>
+        <div id="c-tip" class="text-xs sm:text-sm text-amber-950 font-semibold leading-snug">
+          提示
+        </div>
+      </div>
+    </div>
+
+    <!-- 圖解主舞台 -->
+    <div id="c-stage" class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-7 flex-1 flex flex-col justify-between gap-6">
+      <!-- 由 JS 動態渲染圖解卡片 -->
+    </div>
+  </section>
+
+  <!-- =======================================================================
+       視圖二：指標寫入與 16-Byte 記憶體追蹤（左側舞台 + 右側唯讀 C 程式碼）
+       ======================================================================= -->
+  <main id="view-trace" class="hidden flex-1 max-w-[1560px] w-full mx-auto p-4 sm:p-5 grid-cols-1 xl:grid-cols-12 gap-5">
+
+    <!-- 左側 7 欄：視覺化舞台 -->
+    <div class="xl:col-span-7 flex flex-col gap-4">
+
+      <!-- 1. 步驟講解與語音字幕卡片 -->
+      <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 relative overflow-hidden">
+        <div id="t-accent" class="absolute left-0 top-0 bottom-0 w-2 bg-blue-600"></div>
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+          <div class="flex items-center gap-2.5">
+            <span id="t-badge" class="px-3 py-1 rounded-full text-xs font-extrabold bg-blue-100 text-blue-900">執行追蹤</span>
+            <h2 id="t-title" class="text-lg sm:text-2xl font-black text-slate-900">載入中...</h2>
+          </div>
+          <span id="t-offset-pill" class="px-3 py-1 rounded-xl bg-slate-900 text-cyan-300 font-mono-code text-xs sm:text-sm font-bold">
+            寫入指標 p = bytes + 0
+          </span>
+        </div>
+
+        <p id="t-desc" class="text-base sm:text-lg text-slate-700 leading-relaxed font-medium">
+          請點擊「下一步」開始追蹤記憶體充填過程。
+        </p>
+
+        <div class="mt-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-2.5">
+          <span class="text-lg leading-none mt-0.5">💡</span>
+          <div id="t-tip" class="text-xs sm:text-sm text-amber-950 font-semibold leading-snug">
+            教學提示
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 位元組拆解剖析器 (Byte-Breakdown Inspector) -->
+      <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4 sm:p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
+            <h3 class="text-sm sm:text-base font-black text-slate-900">
+              當前資料型態轉型與 Little-Endian 位元組拆解剖析器
+            </h3>
+          </div>
+          <span id="cast-expr-pill" class="px-2.5 py-1 rounded-lg bg-slate-900 text-amber-300 font-mono-code text-xs font-bold">
+            void *p = bytes;
+          </span>
+        </div>
+        <div id="breakdown-panel" class="rounded-2xl bg-slate-50 border border-slate-200 p-3.5 font-mono-code text-xs sm:text-sm">
+          <!-- 由 JS 動態渲染當前數值的十六進位與小端序排列 -->
+        </div>
+      </div>
+
+      <!-- 3. 16-Byte 記憶體陣列網格 (unsigned char bytes[10000]) -->
+      <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4 sm:p-5 flex-1 flex flex-col justify-between">
+        <div>
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h3 class="text-sm sm:text-base font-black text-slate-900 flex items-center gap-2 flex-wrap">
+                <span>記憶體空間 <code class="font-mono-code text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg">unsigned char bytes[]</code>（每列 16 Bytes）</span>
+              </h3>
+            </div>
+
+            <!-- 型態顏色圖例 -->
+            <div class="flex flex-wrap items-center gap-1 text-[10px] font-bold">
+              <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">int (4B)</span>
+              <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-300">short (2B)</span>
+              <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">char (1B)</span>
+              <span class="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 border border-dashed border-slate-400">offset</span>
+              <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">float (4B)</span>
+              <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300">double (8B)</span>
+              <span class="px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-800 border border-cyan-300">string</span>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto pb-2">
+            <div id="memory-rows-container" class="space-y-2 min-w-[660px]">
+              <!-- 由 JS 動態渲染每行 16 個位元組格子 -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部指示列 -->
+        <div class="pt-3 mt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+          <div class="flex items-center gap-3">
+            <span class="inline-flex items-center gap-1 font-bold text-rose-700"><span class="w-2.5 h-2.5 rounded-full bg-rose-600"></span> 紅色外框 = 寫入指標 <code>p</code> 目前位置</span>
+            <span class="inline-flex items-center gap-1 font-bold text-emerald-700"><span class="w-2.5 h-2.5 rounded-full bg-emerald-600"></span> 綠色外框 = 傾印指標 <code>q</code> 掃描位置</span>
+          </div>
+          <div id="total-bytes-badge" class="font-mono-code font-black text-slate-800 bg-slate-100 px-3 py-1 rounded-lg">
+            已填入範圍：0 bytes
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Hex Dump 終端機輸出視窗 -->
+      <div class="bg-slate-900 text-white rounded-3xl shadow-sm border border-slate-800 p-4">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-xs sm:text-sm font-black text-emerald-400 flex items-center gap-2">
+            <span>🖥️ Hex Dump 記憶體傾印輸出預覽</span>
+          </h3>
+          <span class="text-[11px] font-mono-code text-slate-400">行首 %04d 十進位偏移量 + %02X 十六進位</span>
+        </div>
+        <pre id="hexdump-console" class="font-mono-code text-xs leading-6 text-slate-200 bg-slate-950/80 rounded-xl p-3 border border-slate-800 overflow-x-auto max-h-44">等待資料寫入完成後執行記憶體傾印...</pre>
+      </div>
+
+    </div>
+
+    <!-- 右側 5 欄：完整 C 程式碼同步高亮視窗（鎖定防選取複製） -->
+    <div id="code-window-wrapper" class="no-copy-zone xl:col-span-5 bg-slate-900 text-slate-100 rounded-3xl shadow-lg border border-slate-800 flex flex-col overflow-hidden">
+      <div class="px-4 py-3 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <div class="flex gap-1.5">
+            <span class="w-3 h-3 rounded-full bg-rose-500"></span>
+            <span class="w-3 h-3 rounded-full bg-amber-400"></span>
+            <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+          </div>
+          <span class="font-mono-code text-xs sm:text-sm font-bold text-slate-300 ml-2">1608-記憶體充填.cpp 執行追蹤</span>
+        </div>
+        <span class="px-2 py-0.5 rounded-md bg-rose-950/80 border border-rose-700/60 text-rose-300 text-[11px] font-bold">🔒 唯讀展示（禁止選取複製）</span>
+      </div>
+
+      <div id="code-panel" class="no-copy-zone p-3 sm:p-4 overflow-y-auto font-mono-code text-xs sm:text-[13px] leading-6 flex-1 select-none">
+        <!-- 程式碼由 JS 動態渲染 -->
+      </div>
+
+      <!-- 底部三大指標技術總結 -->
+      <div class="p-3.5 bg-slate-950/90 border-t border-slate-800 text-xs text-slate-300 space-y-1.5">
+        <div class="font-bold text-cyan-300 text-xs sm:text-sm">📌 本題 void* 指標核心技術總結：</div>
+        <div class="p-2 rounded-xl bg-slate-900 border border-slate-800">
+          <span class="text-amber-400 font-bold">① 無型別指標轉型寫入：</span><code class="text-amber-300">*(int*)p = t; p += sizeof(int);</code> 先強制轉型決定寫入寬度，再推進對應位元組數。
+        </div>
+        <div class="p-2 rounded-xl bg-slate-900 border border-slate-800">
+          <span class="text-cyan-400 font-bold">② 字串含結尾零：</span><code class="text-cyan-300">gets((char*)p); p += strlen((char*)p) + 1;</code> 連同結尾 <code class="text-rose-400">0x00</code> 一起計算位移。
+        </div>
+        <div class="p-2 rounded-xl bg-slate-900 border border-slate-800">
+          <span class="text-emerald-400 font-bold">③ 指標相減算總量：</span>傾印指標 <code class="text-emerald-300">q</code> 從 <code class="text-emerald-300">bytes</code> 走到 <code class="text-rose-300">p</code>，最後 <code class="text-amber-300">q - bytes</code> 精準得出總填入位元組數！
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 自訂指令彈出視窗 -->
+  <div id="custom-modal" class="hidden fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-black text-slate-900">✏️ 自訂記憶體充填指令</h3>
+        <button onclick="toggleCustomModal(false)" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 font-bold text-slate-600">✕</button>
+      </div>
+      <p class="text-xs sm:text-sm text-slate-600">
+        請輸入符合題目格式的指令（支援 <code class="font-mono-code text-indigo-700">int</code>、<code class="font-mono-code text-indigo-700">short</code>、<code class="font-mono-code text-indigo-700">char</code>、<code class="font-mono-code text-indigo-700">float</code>、<code class="font-mono-code text-indigo-700">double</code>、<code class="font-mono-code text-indigo-700">string</code>、<code class="font-mono-code text-indigo-700">offset</code>，總長度建議不超過 112 bytes）：
+      </p>
+      <textarea id="custom-script-input" rows="8" class="w-full rounded-2xl border-2 border-slate-300 p-3 font-mono-code text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-indigo-500">int 2
+258 1024
+short 2
+-1 256
+offset 4
+string 2
+Hi
+C++</textarea>
+      <div class="flex items-center justify-end gap-2">
+        <button onclick="toggleCustomModal(false)" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold">取消</button>
+        <button onclick="runCustomScript()" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold shadow">產生專屬動畫</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 防複製溫和提示氣泡 -->
+  <div id="copy-lock-toast" class="fixed bottom-5 right-5 z-50 pointer-events-none opacity-0 translate-y-2 transition-all duration-200 bg-slate-900/95 text-amber-300 border border-amber-500/40 px-4 py-2.5 rounded-2xl shadow-xl text-xs sm:text-sm font-bold flex items-center gap-2">
+    <span>🔒</span>
+    <span>教學展示模式：程式碼視窗已鎖定無法選取複製</span>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. 完整 C 程式碼定義（與教師提供之 1608-記憶體充填 完全一致）
+    // =========================================================================
+    const CPP_LINES = [
+      { ln: 1,  code: '// 1608-記憶體充填' },
+      { ln: 2,  code: '#include <stdio.h>' },
+      { ln: 3,  code: '#include <string.h>' },
+      { ln: 4,  code: '' },
+      { ln: 5,  code: 'enum TYPE{CHAR, SHORT, INT, FLOAT, DOUBLE, STRING, OFFSET};' },
+      { ln: 6,  code: '' },
+      { ln: 7,  code: 'const char* cmdname[]={' },
+      { ln: 8,  code: '    "char", "short", "int", "float", "double", "string", "offset"' },
+      { ln: 9,  code: '};' },
+      { ln: 10, code: '' },
+      { ln: 11, code: 'int commandIndex(char* str)' },
+      { ln: 12, code: '{' },
+      { ln: 13, code: '    for(int i=0; ;i++)' },
+      { ln: 14, code: '        if(strcmp(str, cmdname[i])==0) return i;' },
+      { ln: 15, code: '}' },
+      { ln: 16, code: '' },
+      { ln: 17, code: 'void* memfiller(void *p, int type)' },
+      { ln: 18, code: '{' },
+      { ln: 19, code: '    if(type<=INT){' },
+      { ln: 20, code: '        int t;' },
+      { ln: 21, code: '        scanf("%d", &t);' },
+      { ln: 22, code: '        if(type==CHAR){ *(char*) p = t; p += sizeof(char); }' },
+      { ln: 23, code: '        else if(type==SHORT){ *(short*) p = t; p += sizeof(short); }' },
+      { ln: 24, code: '        else{ *(int*) p = t; p += sizeof(int); }' },
+      { ln: 25, code: '    }' },
+      { ln: 26, code: '    else if(type==FLOAT){ scanf("%f", p); p += sizeof(float); }' },
+      { ln: 27, code: '    else if(type==DOUBLE){ scanf("%lf", p); p += sizeof(double); }' },
+      { ln: 28, code: '    else{ gets((char*) p); p += strlen((char*) p)+1; }' },
+      { ln: 29, code: '    return p;' },
+      { ln: 30, code: '}' },
+      { ln: 31, code: '' },
+      { ln: 32, code: 'int main()' },
+      { ln: 33, code: '{' },
+      { ln: 34, code: '    unsigned char bytes[10000];' },
+      { ln: 35, code: '    char command[16];' },
+      { ln: 36, code: '    int n;' },
+      { ln: 37, code: '    memset(bytes, 0, sizeof(bytes));' },
+      { ln: 38, code: '    void *p = bytes;' },
+      { ln: 39, code: '    while(scanf("%s%d ", command, &n)!=EOF){' },
+      { ln: 40, code: '        int inx = commandIndex(command);' },
+      { ln: 41, code: '        if(inx==OFFSET){ p += n; continue; }' },
+      { ln: 42, code: '        for(int i=0; i<n; i++)' },
+      { ln: 43, code: '            p = memfiller(p, inx);' },
+      { ln: 44, code: '    }' },
+      { ln: 45, code: '    unsigned char* q = bytes;' },
+      { ln: 46, code: '    int offset=0;' },
+      { ln: 47, code: '    while(q<p){' },
+      { ln: 48, code: '        if(offset && offset % 16==0) putchar(\'\\n\');' },
+      { ln: 49, code: '        if(offset%16==0) printf("%04d", offset);' },
+      { ln: 50, code: '        printf(" %02X", *q++);' },
+      { ln: 51, code: '        offset++;' },
+      { ln: 52, code: '    }' },
+      { ln: 53, code: '    printf("\\n\\nTotal %d bytes.\\n", q - bytes);' },
+      { ln: 54, code: '    return 0;' },
+      { ln: 55, code: '}' }
+    ];
+
+    function renderCodePanel() {
+      const panel = document.getElementById('code-panel');
+      panel.innerHTML = CPP_LINES.map(item => {
+        const safe = item.code
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        return `
+          <div id="p1608-ln-${item.ln}" class="flex items-start px-2 py-0.5 rounded-lg transition-colors duration-150">
+            <span class="w-7 shrink-0 text-slate-500 text-right pr-3 select-none">${item.ln}</span>
+            <pre class="whitespace-pre overflow-x-auto flex-1">${safe || ' '}</pre>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // =========================================================================
+    // 2. 分頁一：題目白話解說與小端序圖解（5 步互動劇本）
+    // =========================================================================
+    const CONCEPT_STEPS = [
+      {
+        badge: '觀念 1 / 5 • 題意白話理解',
+        title: '把一塊歸零的連續記憶體，當成「按位元組編號的倉庫」',
+        desc: '題目要求我們準備一塊夠大的連續記憶體 unsigned char bytes[10000]，並用 memset 全部初始化為 0x00。接著派出無型別寫入指標 void *p 從第 0 格出發，依指令把不同型態的資料一格一格填進去！',
+        voice: '歡迎來到 P1608 記憶體充填。首先我們想像電腦裡有一塊一萬個位元組的連續記憶體，一開始用 memset 全部清成 00。接著派出無型別指標 p 從第零格出發，依照指令將不同型態的資料依序寫入記憶體中。',
+        tip: '為什麼用 unsigned char bytes[10000]？因為 unsigned char 剛好佔 1 Byte（範圍 0~255，對應十六進位 00~FF），最適合用來逐格檢視原始記憶體內容！',
+        accent: 'amber',
+        stageMode: 'overview'
+      },
+      {
+        badge: '觀念 2 / 5 • 七種指令與指標位移寬度',
+        title: 'void* 指標本身沒有型態，必須「先強制轉型」才能決定寫入幾格！',
+        desc: 'void* p 只記住記憶體門牌號碼，不知道要寫幾個位元組。因此程式在 memfiller() 中先用 (int*)p、(short*)p 等強制轉型寫入數值，再將指標推進對應的 sizeof 格數！',
+        voice: '第二步，因為 void 指標本身沒有大小概念，所以寫入時必須先做強制轉型。例如寫入 int 就轉型成 int 指標寫入 4 個位元組，指標前進 4 格；寫入 double 就前進 8 格；遇到 offset 指令則直接跳過指定格數不寫入。',
+        tip: '注意 string 型態：除了字母本身之外，C 語言字串結尾還有一個結束符號 \'\\0\'（0x00），所以指標必須前進 strlen(str) + 1 格！',
+        accent: 'blue',
+        stageMode: 'types_table'
+      },
+      {
+        badge: '觀念 3 / 5 • 小端序 (Little-Endian) 儲存規則（核心難點）',
+        title: '為什麼整數 300 (0x0000012C) 存進記憶體會變成 "2C 01 00 00"？',
+        desc: '個人電腦（x86/x64 架構）採用「Little-Endian 小端序」儲存多位元組整數：數字最右邊的「最低位元組（LSB）」放在最前面的低記憶體位址，最高位元組放在最後面！',
+        voice: '這題最常讓同學困惑的就是小端序排列！以整數 300 為例，它的十六進位是 00 00 01 2C。在個人電腦中，最低位元組 2C 會最先存進低位址，所以從左到右看到的順序是 2C、01、00、00，剛好跟我們手寫的順序倒過來！',
+        tip: '負數同樣適用！例如 short -32768 的十六進位二補數是 0x8000，低位元組 00 在前、高位元組 80 在後，因此存成 "00 80"。',
+        accent: 'purple',
+        stageMode: 'little_endian'
+      },
+      {
+        badge: '觀念 4 / 5 • 字串 ASCII 編碼與 Offset 留白機制',
+        title: '字串自動補 0x00 結尾，Offset 指令則留下 0x00 空隙',
+        desc: '當執行 string 寫入 "Hello" 時，記憶體依序填入 \'H\'(48)、\'e\'(65)、\'l\'(6C)、\'l\'(6C)、\'o\'(6F)，最後自動補上結尾 0x00（共 6 bytes）。而執行 offset 6 時，指標直接 p += 6 往前跳，跳過的 6 格維持原本清零的 00！',
+        voice: '第四步，當寫入字串 Hello 時，五個英文字母分別轉成 ASCII 十六進位編碼，並且在最後自動補上一個 00 作為字串結尾，總共佔用 6 個位元組。如果是 offset 6 指令，指標直接往後跳 6 格，跳過的格子就保留原本清零的 00。',
+        tip: '觀察範例輸入中 char 寫入 64 65 66 67 68，在十六進位剛好就是 40 41 42 43 44（對應 ASCII 字元 \'@\', \'A\', \'B\', \'C\', \'D\'）！',
+        accent: 'cyan',
+        stageMode: 'string_offset'
+      },
+      {
+        badge: '觀念 5 / 5 • Hex Dump 記憶體傾印輸出格式',
+        title: '每 16 個位元組換行一次，行首印出 4 位數十進位偏移量',
+        desc: '所有資料寫入完畢後，派指標 q 從 bytes[0] 掃描到 p 為止：每逢 16 的倍數（0000、0016、0032…）就換行並印出 4 位數十進位偏移量，每個位元組以兩位大寫十六進位（%02X）輸出，最後印出總位元組數 q - bytes！',
+        voice: '最後一步是 Hex Dump 輸出。指標 q 從第零格一路走到指標 p，每 16 個位元組就換行並在行首印出四位數十進位偏移量，例如 0000、0016、0032，每個位元組印出兩位大寫十六進位，最後印出總計填入的位元組數！',
+        tip: '準備好了嗎？點擊右上角「二、指標寫入與 16-Byte 記憶體追蹤」，觀看完整 96 Bytes 範例的逐步寫入動畫！',
+        accent: 'emerald',
+        stageMode: 'hexdump_rule'
+      }
+    ];
+
+    function renderConceptStage(mode) {
+      const stage = document.getElementById('c-stage');
+      if (mode === 'overview') {
+        stage.innerHTML = `
+          <div class="space-y-4">
+            <div class="text-xs font-extrabold text-slate-500 uppercase tracking-wider">初始歸零記憶體陣列（memset(bytes, 0, sizeof(bytes))）</div>
+            <div class="overflow-x-auto pb-2">
+              <div class="inline-flex gap-1.5 pt-10 pb-2 px-1">
+                ${Array.from({ length: 12 }).map((_, idx) => `
+                  <div class="relative flex flex-col items-center">
+                    ${idx === 0 ? `<div class="absolute -top-9 flex flex-col items-center"><span class="px-2 py-0.5 rounded bg-rose-600 text-white text-[10px] font-mono-code font-extrabold shadow">void *p</span><span class="text-rose-600 text-[10px] leading-none">▼</span></div>` : ''}
+                    <div class="w-11 h-12 rounded-xl border-2 ${idx === 0 ? 'border-rose-500 bg-rose-50' : 'border-slate-300 bg-slate-50'} flex items-center justify-center font-mono-code font-bold text-slate-400">
+                      00
+                    </div>
+                    <span class="text-[10px] font-mono-code text-slate-500 mt-1">[${idx}]</span>
+                  </div>
+                `).join('')}
+                <div class="flex items-center px-3 text-slate-400 font-mono-code font-bold">... 共 10,000 Bytes</div>
+              </div>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs sm:text-sm">
+              <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200"><strong class="text-slate-900">1. 歸零初始化：</strong>確保沒寫入資料或被 <code class="font-mono-code text-indigo-700">offset</code> 跳過的格子都是 <code class="font-mono-code">00</code>。</div>
+              <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200"><strong class="text-slate-900">2. 指標 p 推進：</strong>每寫入一筆資料，<code class="font-mono-code text-rose-700">p</code> 就往後推進對應的位元組長度。</div>
+              <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200"><strong class="text-slate-900">3. 終點即總長：</strong>全部指令執行完畢後，<code class="font-mono-code text-emerald-700">p - bytes</code> 就是總填入長度！</div>
+            </div>
+          </div>
+        `;
+      } else if (mode === 'types_table') {
+        const rows = [
+          { cmd: 'char', bytes: '1 Byte', cast: '*(char*)p = t; p += 1;', desc: '寫入 1 個位元組整數（-128 ~ 127）', color: 'emerald' },
+          { cmd: 'short', bytes: '2 Bytes', cast: '*(short*)p = t; p += 2;', desc: '寫入 2 個位元組短整數（小端序）', color: 'purple' },
+          { cmd: 'int', bytes: '4 Bytes', cast: '*(int*)p = t; p += 4;', desc: '寫入 4 個位元組整數（小端序）', color: 'blue' },
+          { cmd: 'float', bytes: '4 Bytes', cast: 'scanf("%f", p); p += 4;', desc: 'IEEE 754 單精度浮點數（4 Bytes）', color: 'amber' },
+          { cmd: 'double', bytes: '8 Bytes', cast: 'scanf("%lf", p); p += 8;', desc: 'IEEE 754 雙精度浮點數（8 Bytes）', color: 'rose' },
+          { cmd: 'string', bytes: 'len + 1', cast: 'gets((char*)p); p += strlen+1;', desc: '寫入字元並包含結尾 0x00', color: 'cyan' },
+          { cmd: 'offset n', bytes: 'n Bytes', cast: 'p += n;', desc: '直接跳過 n 個位元組（保留 0x00）', color: 'slate' }
+        ];
+        stage.innerHTML = `
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs sm:text-sm">
+              <thead>
+                <tr class="bg-slate-900 text-white font-mono-code">
+                  <th class="p-3 rounded-tl-xl">指令名稱</th>
+                  <th class="p-3">佔用空間</th>
+                  <th class="p-3">指標寫入與位移寫法</th>
+                  <th class="p-3 rounded-tr-xl">說明</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200">
+                ${rows.map(r => `
+                  <tr class="hover:bg-slate-50">
+                    <td class="p-2.5 font-mono-code font-black text-${r.color}-700">${r.cmd}</td>
+                    <td class="p-2.5 font-mono-code font-bold text-slate-800">${r.bytes}</td>
+                    <td class="p-2.5 font-mono-code text-xs bg-slate-100/70 text-slate-900">${r.cast}</td>
+                    <td class="p-2.5 text-slate-600 font-medium">${r.desc}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      } else if (mode === 'little_endian') {
+        stage.innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5 items-center">
+            <div class="rounded-2xl border-2 border-blue-300 bg-blue-50/40 p-4 space-y-3">
+              <div class="text-xs font-extrabold text-blue-800 bg-blue-100 inline-block px-2.5 py-0.5 rounded-lg">範例 A：int 300（4 Bytes）</div>
+              <div class="font-mono-code text-sm text-slate-800">
+                十進位 <strong>300</strong> = 十六進位 <strong class="text-blue-700">0x 00 00 01 2C</strong>
+              </div>
+              <div class="flex items-center justify-between gap-2 pt-2 font-mono-code text-center">
+                <div class="flex-1 p-2 rounded-xl bg-amber-100 border-2 border-amber-500">
+                  <div class="text-[10px] text-amber-800 font-bold">bytes[+0] 最低位</div>
+                  <div class="text-xl font-black text-slate-900">2C</div>
+                </div>
+                <div class="flex-1 p-2 rounded-xl bg-white border border-slate-300">
+                  <div class="text-[10px] text-slate-500">bytes[+1]</div>
+                  <div class="text-xl font-black text-slate-900">01</div>
+                </div>
+                <div class="flex-1 p-2 rounded-xl bg-white border border-slate-300">
+                  <div class="text-[10px] text-slate-500">bytes[+2]</div>
+                  <div class="text-xl font-black text-slate-900">00</div>
+                </div>
+                <div class="flex-1 p-2 rounded-xl bg-slate-100 border border-slate-300">
+                  <div class="text-[10px] text-slate-500">bytes[+3] 最高位</div>
+                  <div class="text-xl font-black text-slate-900">00</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-2xl border-2 border-purple-300 bg-purple-50/40 p-4 space-y-3">
+              <div class="text-xs font-extrabold text-purple-800 bg-purple-100 inline-block px-2.5 py-0.5 rounded-lg">範例 B：short -32768（2 Bytes 二補數）</div>
+              <div class="font-mono-code text-sm text-slate-800">
+                十進位 <strong>-32768</strong> = 十六進位 <strong class="text-purple-700">0x 80 00</strong>
+              </div>
+              <div class="flex items-center justify-center gap-4 pt-2 font-mono-code text-center max-w-xs mx-auto">
+                <div class="flex-1 p-2 rounded-xl bg-amber-100 border-2 border-amber-500">
+                  <div class="text-[10px] text-amber-800 font-bold">bytes[+0] 最低位</div>
+                  <div class="text-xl font-black text-slate-900">00</div>
+                </div>
+                <div class="flex-1 p-2 rounded-xl bg-slate-100 border border-slate-300">
+                  <div class="text-[10px] text-slate-500">bytes[+1] 最高位</div>
+                  <div class="text-xl font-black text-slate-900">80</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (mode === 'string_offset') {
+        const helloBytes = [
+          { hex: '48', lbl: "'H'" },
+          { hex: '65', lbl: "'e'" },
+          { hex: '6C', lbl: "'l'" },
+          { hex: '6C', lbl: "'l'" },
+          { hex: '6F', lbl: "'o'" },
+          { hex: '00', lbl: "'\\0'", isNull: true }
+        ];
+        stage.innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5 items-center">
+            <div class="rounded-2xl border-2 border-cyan-300 bg-cyan-50/40 p-4 space-y-3">
+              <div class="text-xs font-extrabold text-cyan-800 bg-cyan-100 inline-block px-2.5 py-0.5 rounded-lg">string 寫入 "Hello"（佔 5 + 1 = 6 Bytes）</div>
+              <div class="flex flex-wrap gap-2 font-mono-code text-center">
+                ${helloBytes.map(b => `
+                  <div class="w-12 p-2 rounded-xl border-2 ${b.isNull ? 'border-rose-400 bg-rose-100 text-rose-800' : 'border-cyan-400 bg-white text-slate-900'}">
+                    <div class="text-base font-black">${b.hex}</div>
+                    <div class="text-[10px] font-bold mt-0.5">${b.lbl}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+            <div class="rounded-2xl border-2 border-slate-300 bg-slate-50 p-4 space-y-3">
+              <div class="text-xs font-extrabold text-slate-700 bg-slate-200 inline-block px-2.5 py-0.5 rounded-lg">offset 6 指令（p += 6 跳過 6 格）</div>
+              <div class="flex flex-wrap gap-2 font-mono-code text-center">
+                ${Array.from({ length: 6 }).map((_, idx) => `
+                  <div class="w-12 p-2 rounded-xl border-2 border-dashed border-slate-400 bg-slate-100 text-slate-500">
+                    <div class="text-base font-black">00</div>
+                    <div class="text-[10px] mt-0.5">+${idx}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        stage.innerHTML = `
+          <div class="space-y-3 font-mono-code">
+            <div class="text-xs font-sans font-bold text-slate-600">範例輸出前兩行結構拆解（每行固定 16 個位元組）：</div>
+            <div class="bg-slate-900 text-slate-100 p-4 rounded-2xl text-xs sm:text-sm space-y-2 overflow-x-auto">
+              <div><span class="text-amber-400 font-black">0000</span> <span class="text-blue-300">64 00 00 00</span> <span class="text-blue-300">C8 00 00 00</span> <span class="text-blue-300">2C 01 00 00</span> <span class="text-blue-300">90 01 00 00</span></div>
+              <div><span class="text-amber-400 font-black">0016</span> <span class="text-blue-300">F4 01 00 00</span> <span class="text-purple-300">FF 7F</span> <span class="text-purple-300">00 80</span> <span class="text-emerald-300">40 41 42 43 44</span> <span class="text-slate-400">00 00 00</span></div>
+              <div class="pt-2 border-t border-slate-800 text-emerald-400 font-bold">Total 96 bytes.</div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // =========================================================================
+    // 3. IEEE-754 與整數 Little-Endian 位元組轉換器 + 執行步驟生成器
+    // =========================================================================
+    function encodeValueToBytes(type, rawVal) {
+      const buf = new ArrayBuffer(8);
+      const view = new DataView(buf);
+      let byteLen = 0;
+      let bigEndianHex = '';
+
+      if (type === 'char') {
+        const num = parseInt(rawVal, 10) || 0;
+        view.setInt8(0, num);
+        byteLen = 1;
+        bigEndianHex = view.getUint8(0).toString(16).toUpperCase().padStart(2, '0');
+      } else if (type === 'short') {
+        const num = parseInt(rawVal, 10) || 0;
+        view.setInt16(0, num, true); // Little-Endian
+        byteLen = 2;
+        bigEndianHex = view.getUint16(0, false).toString(16).toUpperCase().padStart(4, '0');
+      } else if (type === 'int') {
+        const num = parseInt(rawVal, 10) || 0;
+        view.setInt32(0, num, true); // Little-Endian
+        byteLen = 4;
+        bigEndianHex = view.getUint32(0, false).toString(16).toUpperCase().padStart(8, '0');
+      } else if (type === 'float') {
+        const num = parseFloat(rawVal) || 0;
+        view.setFloat32(0, num, true); // IEEE-754 Little-Endian
+        byteLen = 4;
+        bigEndianHex = view.getUint32(0, false).toString(16).toUpperCase().padStart(8, '0');
+      } else if (type === 'double') {
+        const num = parseFloat(rawVal) || 0;
+        view.setFloat64(0, num, true); // IEEE-754 Little-Endian
+        byteLen = 8;
+        const hi = view.getUint32(0, false).toString(16).toUpperCase().padStart(8, '0');
+        const lo = view.getUint32(4, false).toString(16).toUpperCase().padStart(8, '0');
+        bigEndianHex = hi + lo;
+      }
+
+      const bytes = [];
+      for (let i = 0; i < byteLen; i++) {
+        bytes.push(view.getUint8(i).toString(16).toUpperCase().padStart(2, '0'));
+      }
+      return { bytes, bigEndianHex };
+    }
+
+    function encodeStringToBytes(str) {
+      const bytes = [];
+      const labels = [];
+      for (let i = 0; i < str.length; i++) {
+        const code = str.charCodeAt(i) & 0xFF;
+        bytes.push(code.toString(16).toUpperCase().padStart(2, '0'));
+        labels.push(str[i] === ' ' ? '␣' : `'${str[i]}'`);
+      }
+      bytes.push('00');
+      labels.push("'\\0'");
+      return { bytes, labels };
+    }
+
+    function formatHexDumpText(memArray, limitP, scanQ = null) {
+      const end = scanQ !== null ? scanQ : limitP;
+      if (end <= 0) return '等待資料寫入...';
+      let lines = [];
+      let curLine = '';
+      for (let off = 0; off < end; off++) {
+        if (off > 0 && off % 16 === 0) {
+          lines.push(curLine);
+          curLine = '';
+        }
+        if (off % 16 === 0) {
+          curLine += off.toString().padStart(4, '0');
+        }
+        curLine += ' ' + memArray[off].hex;
+      }
+      if (curLine) lines.push(curLine);
+      if (scanQ !== null && scanQ === limitP) {
+        lines.push('');
+        lines.push(`Total ${limitP} bytes.`);
+      }
+      return lines.join('\n');
+    }
+
+    function parseScriptToCommands(scriptText) {
+      // 支援題目特殊格式（如 32767-32768 連寫或空白分隔）
+      const rawLines = scriptText.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+      const commands = [];
+      let idx = 0;
+      const validTypes = ['char', 'short', 'int', 'float', 'double', 'string', 'offset'];
+
+      while (idx < rawLines.length) {
+        const headerParts = rawLines[idx].split(/\s+/);
+        const cmd = headerParts[0].toLowerCase();
+        const count = parseInt(headerParts[1], 10);
+        idx++;
+        if (!validTypes.includes(cmd) || isNaN(count) || count <= 0) continue;
+
+        if (cmd === 'offset') {
+          commands.push({ type: 'offset', count });
+        } else if (cmd === 'string') {
+          const vals = [];
+          for (let k = 0; k < count && idx < rawLines.length; k++, idx++) {
+            vals.push(rawLines[idx]);
+          }
+          commands.push({ type: 'string', count: vals.length, values: vals });
+        } else {
+          // 數字類：將接下來的數字切出來（支援 - 號緊連的數字，如 32767-32768）
+          const vals = [];
+          while (vals.length < count && idx < rawLines.length) {
+            const tokens = rawLines[idx].match(/[+-]?\d+(\.\d+)?/g) || [];
+            for (const tk of tokens) {
+              if (vals.length < count) vals.push(tk);
+            }
+            idx++;
+          }
+          commands.push({ type: cmd, count: vals.length, values: vals });
+        }
+      }
+      return commands;
+    }
+
+    function generateTraceStepsFromScript(scriptText) {
+      const commands = parseScriptToCommands(scriptText);
+      // 預先計算總位元組數以決定網格列數（每列 16 bytes）
+      let totalSize = 0;
+      for (const c of commands) {
+        if (c.type === 'offset') totalSize += c.count;
+        else if (c.type === 'char') totalSize += c.count * 1;
+        else if (c.type === 'short') totalSize += c.count * 2;
+        else if (c.type === 'int' || c.type === 'float') totalSize += c.count * 4;
+        else if (c.type === 'double') totalSize += c.count * 8;
+        else if (c.type === 'string') {
+          for (const s of c.values) totalSize += s.length + 1;
+        }
+      }
+      const gridCapacity = Math.max(16, Math.ceil(totalSize / 16) * 16);
+      const mem = Array.from({ length: gridCapacity }, () => ({ hex: '00', type: 'empty', sub: '' }));
+
+      let p = 0;
+      const steps = [];
+
+      const pushStep = (cfg) => {
+        steps.push({
+          mem: mem.map(cell => ({ ...cell })),
+          p,
+          q: cfg.q !== undefined ? cfg.q : null,
+          highlightRange: cfg.highlightRange || null,
+          highlightType: cfg.highlightType || 'write',
+          badge: cfg.badge,
+          title: cfg.title,
+          desc: cfg.desc,
+          voice: cfg.voice,
+          tip: cfg.tip,
+          accent: cfg.accent || 'blue',
+          castExpr: cfg.castExpr || 'void *p = bytes;',
+          breakdownHtml: cfg.breakdownHtml || '',
+          dumpText: cfg.dumpText || formatHexDumpText(mem, p, null),
+          codeLines: cfg.codeLines || []
+        });
+      };
+
+      // 步驟 1：初始化記憶體與指標 p
+      pushStep({
+        badge: '初始化階段 • 歸零與起點指標',
+        title: 'memset(bytes, 0, sizeof(bytes)) 並令 void *p = bytes',
+        desc: `將整塊記憶體初始化為 0x00，無型別寫入指標 p 指向最開頭 bytes[0]（偏移量 0）。準備依序讀取並執行指令！`,
+        voice: `首先在 main 函式中，用 memset 將整塊記憶體初始化為 00，並讓無型別寫入指標 p 指向最開頭第零格。`,
+        tip: '所有尚未寫入的格子預先都是 00，這樣遇到 offset 跳過時就能自動保留為 00！',
+        accent: 'indigo',
+        castExpr: 'memset(bytes, 0, ...); void *p = bytes;',
+        breakdownHtml: `<span class="text-slate-600">目前指標 <strong class="text-rose-700">p</strong> 位於起始位址 <strong class="text-indigo-700">bytes + 0</strong>，等待讀入第一道指令。</span>`,
+        dumpText: '尚未開始寫入資料...',
+        codeLines: [34, 37, 38]
+      });
+
+      // 逐指令產生動畫步驟
+      for (const cmd of commands) {
+        if (cmd.type === 'offset') {
+          const oldP = p;
+          for (let k = 0; k < cmd.count && p + k < gridCapacity; k++) {
+            mem[p + k] = { hex: '00', type: 'offset', sub: 'skip' };
+          }
+          p += cmd.count;
+
+          pushStep({
+            highlightRange: { start: oldP, end: p - 1 },
+            highlightType: 'offset',
+            badge: `指令執行 • offset ${cmd.count}`,
+            title: `inx == OFFSET：指標直接往前跳躍 p += ${cmd.count}（跳過 ${cmd.count} Bytes）`,
+            desc: `讀到指令 "offset ${cmd.count}"，不寫入任何新資料，直接執行 p += ${cmd.count}！指標從 bytes+${oldP} 移動到 bytes+${p}，中間跳過的 ${cmd.count} 格維持原本清零的 0x00。`,
+            voice: `讀到 offset ${cmd.count} 指令，不需要寫入任何數值，直接將指標 p 往後推進 ${cmd.count} 格，跳過的格子保留原本的 00。`,
+            tip: `因為一開始呼叫過 memset(bytes, 0, sizeof(bytes))，所以跳過的區間 [${oldP}..${p - 1}] 自然呈現為 00！`,
+            accent: 'slate',
+            castExpr: `if (inx == OFFSET) { p += ${cmd.count}; continue; }`,
+            breakdownHtml: `
+              <div class="flex flex-wrap items-center gap-3">
+                <span class="px-2.5 py-1 rounded-lg bg-slate-200 text-slate-800 font-bold">位移跳躍：+${cmd.count} Bytes</span>
+                <span>原位址 <strong class="text-slate-700">bytes+${oldP}</strong> ➔ 新位址 <strong class="text-rose-700">bytes+${p}</strong>（中間保留 0x00）</span>
+              </div>
+            `,
+            codeLines: [39, 40, 41]
+          });
+        } else if (cmd.type === 'string') {
+          for (let sIdx = 0; sIdx < cmd.values.length; sIdx++) {
+            const strVal = cmd.values[sIdx];
+            const encoded = encodeStringToBytes(strVal);
+            const oldP = p;
+            for (let b = 0; b < encoded.bytes.length && p + b < gridCapacity; b++) {
+              mem[p + b] = {
+                hex: encoded.bytes[b],
+                type: 'string',
+                sub: encoded.labels[b]
+              };
+            }
+            p += encoded.bytes.length;
+
+            pushStep({
+              highlightRange: { start: oldP, end: p - 1 },
+              highlightType: 'write',
+              badge: `指令 string (${sIdx + 1}/${cmd.values.length}) • 寫入 "${strVal}"`,
+              title: `gets((char*)p) 寫入 "${strVal}"，指標推進 strlen + 1 = ${encoded.bytes.length} Bytes`,
+              desc: `將字串 "${strVal}" 的 ${strVal.length} 個 ASCII 字元寫入記憶體，並在最後自動補上結尾符號 0x00（共佔 ${encoded.bytes.length} Bytes）。寫入指標 p 從 bytes+${oldP} 推進到 bytes+${p}！`,
+              voice: `執行字串寫入 ${strVal}，逐字存入 ASCII 十六進位編碼，並包含結尾的 00，總共佔用 ${encoded.bytes.length} 個位元組，指標 p 前進到 ${p}。`,
+              tip: `特別注意 p += strlen((char*)p) + 1 中的 "+ 1"，就是為了把結尾的 '\\0' (0x00) 也算進佔用空間！`,
+              accent: 'cyan',
+              castExpr: `gets((char*)p); p += strlen((char*)p) + 1; // +${encoded.bytes.length}B`,
+              breakdownHtml: `
+                <div class="space-y-1.5">
+                  <div class="text-xs text-slate-600">字串內容：<strong class="text-cyan-800">"${strVal}"</strong>（長度 ${strVal.length} + 結尾 '\\0' = <strong>${encoded.bytes.length} Bytes</strong>）</div>
+                  <div class="flex flex-wrap gap-1.5">
+                    ${encoded.bytes.map((hx, i) => `
+                      <span class="px-2 py-0.5 rounded border ${hx === '00' ? 'bg-rose-100 border-rose-300 text-rose-800 font-bold' : 'bg-cyan-50 border-cyan-300 text-cyan-950'}">
+                        ${hx} <small class="opacity-75">(${encoded.labels[i]})</small>
+                      </span>
+                    `).join('')}
+                  </div>
+                </div>
+              `,
+              codeLines: [42, 43, 28, 29]
+            });
+          }
+        } else {
+          // 數值型態：char, short, int, float, double
+          const typeLineMap = { char: 22, short: 23, int: 24, float: 26, double: 27 };
+          const castStrMap = {
+            char: '*(char*)p = t; p += sizeof(char);',
+            short: '*(short*)p = t; p += sizeof(short);',
+            int: '*(int*)p = t; p += sizeof(int);',
+            float: 'scanf("%f", p); p += sizeof(float);',
+            double: 'scanf("%lf", p); p += sizeof(double);'
+          };
+
+          for (let vIdx = 0; vIdx < cmd.values.length; vIdx++) {
+            const valStr = cmd.values[vIdx];
+            const encoded = encodeValueToBytes(cmd.type, valStr);
+            const oldP = p;
+            const byteLen = encoded.bytes.length;
+
+            for (let b = 0; b < byteLen && p + b < gridCapacity; b++) {
+              mem[p + b] = {
+                hex: encoded.bytes[b],
+                type: cmd.type,
+                sub: `+${b}`
+              };
+            }
+            p += byteLen;
+
+            const isMultiByte = byteLen > 1;
+            const bigEndianGrouped = encoded.bigEndianHex.match(/.{1,2}/g).join(' ');
+
+            pushStep({
+              highlightRange: { start: oldP, end: p - 1 },
+              highlightType: 'write',
+              badge: `指令 ${cmd.type} (${vIdx + 1}/${cmd.values.length}) • 寫入 ${valStr}`,
+              title: `寫入 ${cmd.type} 數值 ${valStr}（佔 ${byteLen} Byte${byteLen > 1 ? 's' : ''}）`,
+              desc: isMultiByte
+                ? `數值 ${valStr} 的標準十六進位為 0x ${bigEndianGrouped}。依照小端序（Little-Endian）由低位元組到高位元組依序存入 [${oldP}..${p - 1}]，成為 [ ${encoded.bytes.join(' ')} ]，指標 p 推進至 bytes+${p}！`
+                : `數值 ${valStr} 轉型為 1-Byte char，十六進位為 0x${encoded.bytes[0]}，寫入 bytes[${oldP}]，指標 p 推進至 bytes+${p}！`,
+              voice: isMultiByte
+                ? `寫入 ${cmd.type} 數值 ${valStr}，佔用 ${byteLen} 個位元組。按照小端序排列，記憶體中依序寫入 ${encoded.bytes.join('、')}。`
+                : `寫入 char 數值 ${valStr}，十六進位為 ${encoded.bytes[0]}，指標 p 前進一格。`,
+              tip: isMultiByte
+                ? `對照看：邏輯上的十六進位高位在左（${bigEndianGrouped}），存進記憶體後最低位元組 ${encoded.bytes[0]} 放在最前面！`
+                : `char 佔 1 個位元組，沒有高低位元組順序問題，直接寫入該位元組即可。`,
+              accent: cmd.type === 'int' ? 'blue' : (cmd.type === 'short' ? 'purple' : (cmd.type === 'float' ? 'amber' : (cmd.type === 'double' ? 'rose' : 'emerald'))),
+              castExpr: castStrMap[cmd.type],
+              breakdownHtml: `
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <span class="text-slate-500">原始數值：</span><strong class="text-slate-900">${valStr}</strong>
+                    <span class="mx-2 text-slate-300">|</span>
+                    <span class="text-slate-500">數值十六進位：</span><strong class="text-indigo-700">0x ${bigEndianGrouped}</strong>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-slate-500">小端序寫入：</span>
+                    ${encoded.bytes.map((hx, idx) => `
+                      <span class="px-2 py-0.5 rounded bg-amber-100 border border-amber-400 text-slate-950 font-black">
+                        ${hx} <small class="text-[10px] text-amber-800">[+${idx}]</small>
+                      </span>
+                    `).join('')}
+                  </div>
+                </div>
+              `,
+              codeLines: [42, 43, typeLineMap[cmd.type], 29]
+            });
+          }
+        }
+      }
+
+      // 最後步驟：Hex Dump 記憶體傾印輸出
+      pushStep({
+        q: p,
+        highlightRange: { start: 0, end: p - 1 },
+        highlightType: 'dump',
+        badge: '輸出階段 • Hex Dump 記憶體傾印完成',
+        title: `指標 q 從 bytes 掃描至 p，輸出每行 16 Bytes 與 Total ${p} bytes.`,
+        desc: `所有資料寫入指令均已執行完畢！指標 q 從 bytes[0] 逐格掃描到 p（共 ${p} Bytes），每逢 16 的倍數換行並印出 4 位數十進位偏移量，最後透過指標相減 q - bytes 印出 "Total ${p} bytes."！`,
+        voice: `所有寫入指令都已執行完畢。最後進入記憶體傾印迴圈，指標 q 從第零格掃描到指標 p，每 16 個位元組換行並印出偏移量，最後透過 q 減 bytes 算出總共填入了 ${p} 個位元組！`,
+        tip: `請核對下方終端機輸出視窗的每一行十六進位數字，與題目 PDF 範例輸出完全一模一樣！`,
+        accent: 'emerald',
+        castExpr: `while (q < p) { ... } printf("Total %d bytes.\\n", q - bytes);`,
+        breakdownHtml: `<span class="text-emerald-800 font-bold">✔ 傾印完成！指標差 q - bytes = ${p} - 0 = <strong>${p} bytes</strong>。</span>`,
+        dumpText: formatHexDumpText(mem, p, p),
+        codeLines: [45, 46, 47, 48, 49, 50, 51, 53]
+      });
+
+      return steps;
+    }
+
+    // 內建兩組預設測資腳本
+    const SAMPLE_SCRIPT_FULL = `int 5
+100 200 300 400 500
+short 2
+32767-32768
+char 5
+64 65 66 67 68
+offset 6
+float 2
+1234.567 765.4321
+double 2
+1234.567 765.4321
+string 3
+Hello
+Hello World
+Hello Lovely World`;
+
+    const SAMPLE_SCRIPT_QUICK = `int 2
+100 300
+short 2
+32767 -32768
+char 3
+65 66 67
+offset 4
+string 2
+Hi
+C++`;
+
+    // =========================================================================
+    // 4. 語音合成引擎 (Web Speech API - zh-TW)
+    // =========================================================================
+    let voiceEnabled = true;
+    let voiceRate = 1.0;
+    let preferredVoice = null;
+    let isAutoPlaying = false;
+    let fallbackTimer = null;
+
+    function loadVoices() {
+      if (!('speechSynthesis' in window)) return;
+      const voices = window.speechSynthesis.getVoices();
+      preferredVoice =
+        voices.find(v => v.lang === 'zh-TW' && v.name.includes('Google')) ||
+        voices.find(v => v.lang === 'zh-TW' || v.lang === 'zh_TW') ||
+        voices.find(v => v.lang.startsWith('zh'));
+    }
+
+    if ('speechSynthesis' in window) {
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    function stopSpeech() {
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      setSpeakingUI(false);
+    }
+
+    function setSpeakingUI(speaking) {
+      const ind = document.getElementById('speaking-indicator');
+      if (speaking) {
+        ind.classList.remove('hidden');
+        ind.classList.add('flex');
+      } else {
+        ind.classList.add('hidden');
+        ind.classList.remove('flex');
+      }
+    }
+
+    function speakText(text, onFinishCallback) {
+      stopSpeech();
+
+      if (!voiceEnabled || !('speechSynthesis' in window)) {
+        if (onFinishCallback) {
+          fallbackTimer = setTimeout(onFinishCallback, 2500 / voiceRate);
+        }
+        return;
+      }
+
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'zh-TW';
+      if (preferredVoice) utter.voice = preferredVoice;
+      utter.rate = voiceRate;
+      utter.pitch = 1.0;
+
+      utter.onstart = () => setSpeakingUI(true);
+      utter.onend = () => {
+        setSpeakingUI(false);
+        if (onFinishCallback) {
+          fallbackTimer = setTimeout(onFinishCallback, 550);
+        }
+      };
+      utter.onerror = () => {
+        setSpeakingUI(false);
+        if (onFinishCallback) {
+          fallbackTimer = setTimeout(onFinishCallback, 1200);
+        }
+      };
+
+      window.speechSynthesis.speak(utter);
+    }
+
+    function toggleVoiceMute() {
+      voiceEnabled = !voiceEnabled;
+      const btn = document.getElementById('btn-voice-toggle');
+      const icon = document.getElementById('voice-icon');
+      const label = document.getElementById('voice-label');
+
+      if (voiceEnabled) {
+        btn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white flex items-center gap-1 transition';
+        icon.textContent = '🎙️';
+        label.textContent = '開啟';
+        replayVoice();
+      } else {
+        stopSpeech();
+        btn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-300 flex items-center gap-1 transition';
+        icon.textContent = '🔇';
+        label.textContent = '靜音';
+      }
+    }
+
+    function setVoiceRate(rate) {
+      voiceRate = rate;
+      document.querySelectorAll('.rate-btn').forEach(b => {
+        b.className = 'rate-btn px-2 py-1 text-xs rounded-lg text-slate-300 hover:bg-slate-700 font-mono-code';
+      });
+      const id = rate === 0.8 ? 'rate-08' : (rate === 1.0 ? 'rate-10' : 'rate-12');
+      document.getElementById(id).className = 'rate-btn px-2 py-1 text-xs rounded-lg bg-amber-500 text-slate-950 font-bold font-mono-code';
+
+      if (voiceEnabled) {
+        replayVoice();
+      }
+    }
+
+    // =========================================================================
+    // 5. 雙分頁狀態管理與 DOM 渲染引擎
+    // =========================================================================
+    let activeMainTab = 'concept';
+    let conceptIdx = 0;
+    let traceSteps = [];
+    let traceIdx = 0;
+
+    function switchMainTab(tab, shouldSpeak = true) {
+      stopAutoPlay();
+      stopSpeech();
+      activeMainTab = tab;
+
+      const btnConcept = document.getElementById('mtab-concept');
+      const btnTrace = document.getElementById('mtab-trace');
+      const viewConcept = document.getElementById('view-concept');
+      const viewTrace = document.getElementById('view-trace');
+      const traceControls = document.getElementById('trace-controls');
+
+      if (tab === 'concept') {
+        btnConcept.className = 'mtab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold bg-amber-400 text-slate-950 shadow transition flex items-center gap-1.5';
+        btnTrace.className = 'mtab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold text-slate-200 bg-slate-700/80 hover:bg-slate-700 border border-slate-600 transition flex items-center gap-1.5';
+        viewConcept.classList.remove('hidden');
+        viewTrace.classList.add('hidden');
+        viewTrace.classList.remove('grid');
+        traceControls.classList.add('hidden');
+        traceControls.classList.remove('flex');
+        renderConcept(shouldSpeak);
+      } else {
+        btnTrace.className = 'mtab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold bg-amber-400 text-slate-950 shadow transition flex items-center gap-1.5';
+        btnConcept.className = 'mtab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold text-slate-200 bg-slate-700/80 hover:bg-slate-700 border border-slate-600 transition flex items-center gap-1.5';
+        viewConcept.classList.add('hidden');
+        viewTrace.classList.remove('hidden');
+        viewTrace.classList.add('grid');
+        traceControls.classList.remove('hidden');
+        traceControls.classList.add('flex');
+        renderTrace(shouldSpeak);
+      }
+    }
+
+    function selectPreset(presetId) {
+      stopAutoPlay();
+      stopSpeech();
+      ['sample', 'quick'].forEach(pid => {
+        const el = document.getElementById(`preset-${pid}`);
+        if (!el) return;
+        el.className = pid === presetId
+          ? 'preset-btn px-3 py-1.5 rounded-xl text-xs font-extrabold bg-white text-slate-900 shadow transition'
+          : 'preset-btn px-3 py-1.5 rounded-xl text-xs font-extrabold text-slate-200 bg-slate-700/70 hover:bg-slate-700 border border-slate-600 transition';
+      });
+
+      const script = presetId === 'sample' ? SAMPLE_SCRIPT_FULL : SAMPLE_SCRIPT_QUICK;
+      traceSteps = generateTraceStepsFromScript(script);
+      traceIdx = 0;
+      renderTrace(true);
+    }
+
+    function toggleCustomModal(show) {
+      const modal = document.getElementById('custom-modal');
+      if (show) {
+        stopAutoPlay();
+        stopSpeech();
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      } else {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+    }
+
+    function runCustomScript() {
+      const raw = document.getElementById('custom-script-input').value;
+      if (!raw.trim()) return;
+      toggleCustomModal(false);
+
+      ['sample', 'quick'].forEach(pid => {
+        const el = document.getElementById(`preset-${pid}`);
+        if (el) el.className = 'preset-btn px-3 py-1.5 rounded-xl text-xs font-extrabold text-slate-200 bg-slate-700/70 hover:bg-slate-700 border border-slate-600 transition';
+      });
+
+      traceSteps = generateTraceStepsFromScript(raw);
+      traceIdx = 0;
+      renderTrace(true);
+    }
+
+    function renderConcept(shouldSpeak = true) {
+      const s = CONCEPT_STEPS[conceptIdx];
+      document.getElementById('mode-indicator-badge').textContent = `當前單元：題目白話解說與小端序圖解（共 ${CONCEPT_STEPS.length} 步）`;
+      document.getElementById('step-counter').textContent = `${conceptIdx + 1} / ${CONCEPT_STEPS.length}`;
+      const pct = CONCEPT_STEPS.length > 1 ? (conceptIdx / (CONCEPT_STEPS.length - 1)) * 100 : 100;
+      document.getElementById('progress-bar').style.width = `${pct}%`;
+
+      document.getElementById('btn-prev').disabled = conceptIdx === 0;
+      document.getElementById('btn-next').disabled = conceptIdx === CONCEPT_STEPS.length - 1;
+
+      const accentMap = { amber: 'bg-amber-500', blue: 'bg-blue-600', purple: 'bg-purple-600', cyan: 'bg-cyan-600', emerald: 'bg-emerald-600' };
+      document.getElementById('c-accent').className = `absolute left-0 top-0 bottom-0 w-2 ${accentMap[s.accent] || 'bg-amber-500'}`;
+      document.getElementById('c-badge').textContent = s.badge;
+      document.getElementById('c-title').textContent = s.title;
+      document.getElementById('c-desc').textContent = s.desc;
+      document.getElementById('c-tip').textContent = s.tip;
+
+      renderConceptStage(s.stageMode);
+
+      if (shouldSpeak) {
+        speakText(s.voice, () => {
+          if (isAutoPlaying) {
+            if (conceptIdx < CONCEPT_STEPS.length - 1) {
+              conceptIdx++;
+              renderConcept(true);
+            } else {
+              stopAutoPlay();
+            }
+          }
+        });
+      }
+    }
+
+    function renderTrace(shouldSpeak = true) {
+      if (!traceSteps.length) return;
+      const s = traceSteps[traceIdx];
+
+      document.getElementById('mode-indicator-badge').textContent = `當前單元：指標寫入與 16-Byte 記憶體追蹤（共 ${traceSteps.length} 步）`;
+      document.getElementById('step-counter').textContent = `${traceIdx + 1} / ${traceSteps.length}`;
+      const pct = traceSteps.length > 1 ? (traceIdx / (traceSteps.length - 1)) * 100 : 100;
+      document.getElementById('progress-bar').style.width = `${pct}%`;
+
+      document.getElementById('btn-prev').disabled = traceIdx === 0;
+      document.getElementById('btn-next').disabled = traceIdx === traceSteps.length - 1;
+
+      const accentMap = {
+        indigo: 'bg-indigo-600',
+        blue: 'bg-blue-600',
+        purple: 'bg-purple-600',
+        emerald: 'bg-emerald-600',
+        amber: 'bg-amber-500',
+        rose: 'bg-rose-600',
+        cyan: 'bg-cyan-600',
+        slate: 'bg-slate-600'
+      };
+      document.getElementById('t-accent').className = `absolute left-0 top-0 bottom-0 w-2 ${accentMap[s.accent] || 'bg-indigo-600'}`;
+      document.getElementById('t-badge').textContent = s.badge;
+      document.getElementById('t-title').textContent = s.title;
+      document.getElementById('t-offset-pill').textContent = `寫入指標 p = bytes + ${s.p}`;
+      document.getElementById('t-desc').textContent = s.desc;
+      document.getElementById('t-tip').textContent = s.tip;
+
+      document.getElementById('cast-expr-pill').textContent = s.castExpr;
+      document.getElementById('breakdown-panel').innerHTML = s.breakdownHtml;
+      document.getElementById('total-bytes-badge').textContent = `已填入範圍：${s.p} bytes`;
+      document.getElementById('hexdump-console').textContent = s.dumpText;
+
+      // 渲染 16-Byte 記憶體網格
+      const rowsContainer = document.getElementById('memory-rows-container');
+      const totalRows = Math.ceil(s.mem.length / 16);
+      const typeStyleMap = {
+        empty:  'border-slate-200 bg-slate-50/70 text-slate-300',
+        int:    'border-blue-300 bg-blue-50 text-blue-950 font-black',
+        short:  'border-purple-300 bg-purple-50 text-purple-950 font-black',
+        char:   'border-emerald-300 bg-emerald-50 text-emerald-950 font-black',
+        offset: 'border-dashed border-slate-400 bg-slate-200/70 text-slate-500 font-bold',
+        float:  'border-amber-300 bg-amber-50 text-amber-950 font-black',
+        double: 'border-rose-300 bg-rose-50 text-rose-950 font-black',
+        string: 'border-cyan-300 bg-cyan-50 text-cyan-950 font-black'
+      };
+
+      let rowsHtml = '';
+      for (let r = 0; r < totalRows; r++) {
+        const rowStart = r * 16;
+        const rowLabel = rowStart.toString().padStart(4, '0');
+        let cellsHtml = '';
+
+        for (let c = 0; c < 16; c++) {
+          const idx = rowStart + c;
+          const cell = s.mem[idx];
+          let cls = typeStyleMap[cell.type] || typeStyleMap.empty;
+
+          if (s.highlightRange && idx >= s.highlightRange.start && idx <= s.highlightRange.end) {
+            if (s.highlightType === 'write') cls += ' anim-write ring-2 ring-amber-400 border-amber-500';
+            else if (s.highlightType === 'offset') cls += ' anim-offset ring-2 ring-slate-400';
+            else if (s.highlightType === 'dump') cls += ' anim-dump ring-2 ring-emerald-400';
+          }
+
+          if (s.p === idx) {
+            cls += ' ring-2 ring-rose-600 border-rose-600';
+          }
+
+          const pBadge = (s.p === idx)
+            ? `<span class="absolute -top-2.5 left-1/2 -translate-x-1/2 px-1 rounded bg-rose-600 text-white text-[9px] font-mono-code font-extrabold leading-tight shadow">p</span>`
+            : '';
+
+          cellsHtml += `
+            <div class="relative flex flex-col items-center">
+              ${pBadge}
+              <div class="byte-cell w-8 h-9 sm:w-9 sm:h-10 rounded-lg border ${cls} flex flex-col items-center justify-center font-mono-code text-xs leading-none" title="bytes[${idx}] = 0x${cell.hex} (${cell.type})">
+                <span>${cell.hex}</span>
+                ${cell.sub ? `<span class="text-[8px] opacity-70 mt-0.5">${cell.sub}</span>` : ''}
+              </div>
+            </div>
+          `;
+        }
+
+        rowsHtml += `
+          <div class="flex items-center gap-2">
+            <div class="w-12 shrink-0 font-mono-code text-xs font-extrabold text-slate-600 bg-slate-100 px-2 py-1.5 rounded-lg text-center border border-slate-200">
+              ${rowLabel}
+            </div>
+            <div class="grid grid-cols-16 gap-1 flex-1" style="grid-template-columns: repeat(16, minmax(0, 1fr));">
+              ${cellsHtml}
+            </div>
+          </div>
+        `;
+      }
+      rowsContainer.innerHTML = rowsHtml;
+
+      // 右側程式碼行同步高亮
+      CPP_LINES.forEach(item => {
+        const el = document.getElementById(`p1608-ln-${item.ln}`);
+        if (!el) return;
+        if (s.codeLines.includes(item.ln)) {
+          el.className = 'flex items-start px-2 py-0.5 rounded-lg bg-amber-400/20 border-l-4 border-amber-400 text-amber-200 font-bold transition-colors duration-150';
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+          el.className = 'flex items-start px-2 py-0.5 rounded-lg text-slate-300 hover:bg-slate-800/60 transition-colors duration-150';
+        }
+      });
+
+      if (shouldSpeak) {
+        speakText(s.voice, () => {
+          if (isAutoPlaying) {
+            if (traceIdx < traceSteps.length - 1) {
+              traceIdx++;
+              renderTrace(true);
+            } else {
+              stopAutoPlay();
+            }
+          }
+        });
+      }
+    }
+
+    // =========================================================================
+    // 6. 統一播放控制與防複製保護
+    // =========================================================================
+    function nextStep() {
+      stopAutoPlay();
+      if (activeMainTab === 'concept') {
+        if (conceptIdx < CONCEPT_STEPS.length - 1) {
+          conceptIdx++;
+          renderConcept(true);
+        }
+      } else {
+        if (traceIdx < traceSteps.length - 1) {
+          traceIdx++;
+          renderTrace(true);
+        }
+      }
+    }
+
+    function prevStep() {
+      stopAutoPlay();
+      if (activeMainTab === 'concept') {
+        if (conceptIdx > 0) {
+          conceptIdx--;
+          renderConcept(true);
+        }
+      } else {
+        if (traceIdx > 0) {
+          traceIdx--;
+          renderTrace(true);
+        }
+      }
+    }
+
+    function resetCurrent() {
+      stopAutoPlay();
+      stopSpeech();
+      if (activeMainTab === 'concept') {
+        conceptIdx = 0;
+        renderConcept(false);
+      } else {
+        traceIdx = 0;
+        renderTrace(false);
+      }
+    }
+
+    function replayVoice() {
+      if (activeMainTab === 'concept') {
+        const s = CONCEPT_STEPS[conceptIdx];
+        if (s) speakText(s.voice, isAutoPlaying ? () => {
+          if (conceptIdx < CONCEPT_STEPS.length - 1) { conceptIdx++; renderConcept(true); }
+          else stopAutoPlay();
+        } : null);
+      } else {
+        const s = traceSteps[traceIdx];
+        if (s) speakText(s.voice, isAutoPlaying ? () => {
+          if (traceIdx < traceSteps.length - 1) { traceIdx++; renderTrace(true); }
+          else stopAutoPlay();
+        } : null);
+      }
+    }
+
+    function startAutoPlay() {
+      isAutoPlaying = true;
+      document.getElementById('auto-icon').textContent = '⏸';
+      document.getElementById('auto-text').textContent = '暫停連續播放';
+      document.getElementById('btn-auto').classList.replace('bg-indigo-600', 'bg-amber-600');
+      document.getElementById('btn-auto').classList.replace('hover:bg-indigo-500', 'hover:bg-amber-500');
+
+      if (activeMainTab === 'concept') {
+        if (conceptIdx >= CONCEPT_STEPS.length - 1) conceptIdx = 0;
+        renderConcept(true);
+      } else {
+        if (traceIdx >= traceSteps.length - 1) traceIdx = 0;
+        renderTrace(true);
+      }
+    }
+
+    function stopAutoPlay() {
+      isAutoPlaying = false;
+      document.getElementById('auto-icon').textContent = '🔊';
+      document.getElementById('auto-text').textContent = '自動連續播放';
+      document.getElementById('btn-auto').classList.replace('bg-amber-600', 'bg-indigo-600');
+      document.getElementById('btn-auto').classList.replace('hover:bg-amber-500', 'hover:bg-indigo-500');
+    }
+
+    function toggleAutoPlay() {
+      if (isAutoPlaying) {
+        stopAutoPlay();
+        stopSpeech();
+      } else {
+        startAutoPlay();
+      }
+    }
+
+    // 防選取、防複製與快捷鍵保護
+    let toastTimer = null;
+    function showCopyLockToast() {
+      const toast = document.getElementById('copy-lock-toast');
+      if (!toast) return;
+      toast.classList.remove('opacity-0', 'translate-y-2');
+      toast.classList.add('opacity-100', 'translate-y-0');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', 'translate-y-2');
+      }, 2000);
+    }
+
+    function setupAntiCopyProtection() {
+      const isEditable = (target) => target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+
+      document.addEventListener('contextmenu', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+          showCopyLockToast();
+        }
+      });
+
+      document.addEventListener('selectstart', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+        }
+      });
+
+      document.addEventListener('copy', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+          showCopyLockToast();
+        }
+      });
+
+      document.addEventListener('cut', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+          showCopyLockToast();
+        }
+      });
+
+      document.addEventListener('dragstart', (e) => {
+        if (!isEditable(e.target)) {
+          e.preventDefault();
+        }
+      });
+    }
+
+    window.addEventListener('keydown', (e) => {
+      const isInputFocused = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+
+      if (!isInputFocused && (e.ctrlKey || e.metaKey)) {
+        const key = e.key.toLowerCase();
+        if (['c', 'a', 'x', 's', 'u'].includes(key)) {
+          e.preventDefault();
+          showCopyLockToast();
+          return;
+        }
+      }
+
+      if (isInputFocused || (document.activeElement && document.activeElement.tagName === 'SELECT')) return;
+      if (e.key === 'ArrowRight') nextStep();
+      if (e.key === 'ArrowLeft') prevStep();
+      if (e.key === ' ') {
+        e.preventDefault();
+        toggleAutoPlay();
+      }
+    });
+
+    window.onload = function () {
+      setupAntiCopyProtection();
+      renderCodePanel();
+      traceSteps = generateTraceStepsFromScript(SAMPLE_SCRIPT_FULL);
+      switchMainTab('concept', false);
+    };
+  </script>
+</body>
+</html>
